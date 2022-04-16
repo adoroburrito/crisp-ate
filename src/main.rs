@@ -1,3 +1,5 @@
+use std::env;
+use std::io::ErrorKind;
 enum CrispsAteDecodedOpcodes {
     // TO-DO -> fix: 0NNN, 1NNN, 2NNN, ANNN, BNNN, DXYN
     // 12-bit max! (0-4095) 16-bit is too large (0-65535)
@@ -38,7 +40,7 @@ enum CrispsAteDecodedOpcodes {
     FillFromV0ToVXStartingFromI,            // FX65
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct CrispAteTimers {
     delay: u8,
     sound: u8,
@@ -50,7 +52,7 @@ impl CrispAteTimers {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct CrispAteRegisters {
     V0: u8,
     V1: u8,
@@ -94,7 +96,7 @@ impl CrispAteRegisters {
         }
     }
 }
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct CrispAte {
     memory: [u8; 4096],
     registers: CrispAteRegisters,
@@ -116,8 +118,87 @@ impl CrispAte {
             timers,
         }
     }
+
+    fn init(&mut self, file_bytes: [u8; 3584]) {
+        // populate memory with font
+        let fontset: [u8; 80] = [
+            0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
+            0x20, 0x60, 0x20, 0x20, 0x70, // 1
+            0xF0, 0x10, 0xF0, 0x80, 0xF0, // 2
+            0xF0, 0x10, 0xF0, 0x10, 0xF0, // 3
+            0x90, 0x90, 0xF0, 0x10, 0x10, // 4
+            0xF0, 0x80, 0xF0, 0x10, 0xF0, // 5
+            0xF0, 0x80, 0xF0, 0x90, 0xF0, // 6
+            0xF0, 0x10, 0x20, 0x40, 0x40, // 7
+            0xF0, 0x90, 0xF0, 0x90, 0xF0, // 8
+            0xF0, 0x90, 0xF0, 0x10, 0xF0, // 9
+            0xF0, 0x90, 0xF0, 0x90, 0x90, // A
+            0xE0, 0x90, 0xE0, 0x90, 0xE0, // B
+            0xF0, 0x80, 0x80, 0x80, 0xF0, // C
+            0xE0, 0x90, 0x90, 0x90, 0xE0, // D
+            0xF0, 0x80, 0xF0, 0x80, 0xF0, // E
+            0xF0, 0x80, 0xF0, 0x80, 0x80, // F
+        ];
+
+        // load program in memory, starting in 0x200
+        let mut fb_index = 0;
+        for address in 0x200..=0xFFF {
+            self.memory[address] = file_bytes[fb_index];
+
+            fb_index += 1;
+        }
+
+        let mut index = 0x50;
+        for byte in fontset {
+            self.memory[index] = byte;
+
+            index += 1;
+        }
+
+        // set program counter to start of the program
+        self.registers.PC = 0x200;
+    }
 }
 
 fn main() {
-    let vm = CrispAte::new();
+    let args: Vec<String> = env::args().collect();
+    if args.len() < 2 || args.len() > 2 {
+        println!("Usage: crisp-ate <fileName>");
+        std::process::exit(1);
+    }
+
+    let filename = &args[1];
+
+    let mut available_memory: [u8; 3584] = [0; 3584];
+    let program_bytes = match std::fs::read(filename) {
+        Ok(bytes) => bytes,
+        Err(e) => match e.kind() {
+            ErrorKind::PermissionDenied => {
+                eprintln!("Not enough permissions to open the file!");
+                std::process::exit(1);
+            }
+            ErrorKind::NotFound => {
+                eprintln!("File not found.");
+                std::process::exit(1);
+            }
+            _ => {
+                eprintln!("Unable to open file!");
+                std::process::exit(1);
+            }
+        },
+    };
+
+    if program_bytes.len() > available_memory.len() {
+        eprintln!("File is too big for emulator!");
+        std::process::exit(1);
+    }
+
+    for (i, byte) in program_bytes.iter().enumerate() {
+        available_memory[i] = byte.to_owned()
+    }
+
+    let mut vm = CrispAte::new();
+    vm.init(available_memory);
+
+    println!("{:#?}", vm);
 }
