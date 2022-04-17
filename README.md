@@ -7,7 +7,7 @@ https://multigesture.net/articles/how-to-write-an-emulator-chip-8-interpreter/
 https://tobiasvl.github.io/blog/write-a-chip-8-emulator/#1nnn-jump
 
 ![blinky](https://multigesture.net/wp-content/uploads/2011/03/blinky.jpg)
-###### ^ not actual graphics (yet), but I'm aiming towards something similar
+###### ^ not actual graphics (yet), but I'm aiming towards something similar (image taken from the first link)
 
 # Usage
 
