@@ -4,7 +4,7 @@ use std::io::ErrorKind;
 #[derive(Debug)]
 struct CrispAteRuntime {
     stack_pointer: usize,
-    stack: [u8; 16],
+    stack: [u16; 16],
 }
 
 impl CrispAteRuntime {
@@ -321,55 +321,169 @@ impl CrispAte {
 
     fn execute(&mut self, opcode: CrispsAteDecodedOpcodes) {
         match opcode {
-            CrispsAteDecodedOpcodes::None(opcde) => panic!("Unknown opcode: {:#04x?}", opcode),
+            CrispsAteDecodedOpcodes::None(opcode) => panic!("Unknown opcode: {:#04x?}", opcode),
             CrispsAteDecodedOpcodes::AddToVX(v_no, nibble) => {
                 // 7XNN -> Adds NN to VX. (Carry flag is not changed);
                 // v_no -> X
                 // nibble -> NN
                 *self.find_v_register(v_no) += nibble;
-                self.registers.program_counter += 1;
+                self.registers.program_counter += 2;
             }
-            CrispsAteDecodedOpcodes::AddVXToI(v_no) => unimplemented!(),
-            CrispsAteDecodedOpcodes::AddVYtoVX(v_x_no, v_y_no) => unimplemented!(),
-            CrispsAteDecodedOpcodes::Call(nibble) => unimplemented!(),
-            CrispsAteDecodedOpcodes::CallSubRoutine(nibble) => unimplemented!(),
-            CrispsAteDecodedOpcodes::ClearDisplay => unimplemented!(),
-            CrispsAteDecodedOpcodes::DrawSpriteAt(x, y, nibble) => unimplemented!(),
-            CrispsAteDecodedOpcodes::FillFromV0ToVXStartingFromI(v_no) => unimplemented!(),
-            CrispsAteDecodedOpcodes::GetKeyToVX(v_no) => unimplemented!(),
-            CrispsAteDecodedOpcodes::Jump(nibble) => unimplemented!(),
-            CrispsAteDecodedOpcodes::JumpToAddress(nibble) => unimplemented!(),
-            CrispsAteDecodedOpcodes::Return => unimplemented!(),
-            CrispsAteDecodedOpcodes::SetDelayToVX(v_no) => unimplemented!(),
-            CrispsAteDecodedOpcodes::SetIAddress(nibble) => unimplemented!(),
-            CrispsAteDecodedOpcodes::SetIToLocationOfVXChar(v_no) => unimplemented!(),
-            CrispsAteDecodedOpcodes::SetSoundToVX(v_no) => unimplemented!(),
+            CrispsAteDecodedOpcodes::AddVXToI(v_no) => {
+                // FX1E -> Adds VX to I. VF is not affected.
+                // v_no -> X
+                let vx = *self.find_v_register(v_no);
+
+                self.registers.address += vx as u16;
+                self.registers.program_counter += 2;
+            }
+            CrispsAteDecodedOpcodes::AddVYtoVX(v_x_no, v_y_no) => {
+                // 8XY4 -> Adds VY to VX.
+                // VF is set to 1 when there's a carry, and to 0 when there is not.
+                // v_x_no -> X
+                // v_y_no -> Y
+                if (*self.find_v_register(v_y_no) >> 4) > (0xFF - *self.find_v_register(v_y_no)) {
+                    self.registers.v_f = 1;
+                } else {
+                    self.registers.v_f = 0;
+                }
+
+                *self.find_v_register(v_y_no) += *self.find_v_register(v_x_no);
+                self.registers.program_counter += 2;
+            }
+            CrispsAteDecodedOpcodes::Call(nibble) => {
+                // 0NNN -> Calls machine code routine (RCA 1802 for COSMAC VIP)
+                // at address NNN. Not necessary for most ROMs.
+                unimplemented!()
+            }
+            CrispsAteDecodedOpcodes::CallSubRoutine(nibble) => {
+                // 2NNN -> Calls subroutine at NNN.
+                // nibble -> NNN
+                self.runtime.stack[self.runtime.stack_pointer] = self.registers.program_counter;
+                self.runtime.stack_pointer += 1;
+                self.registers.program_counter = nibble;
+            }
+            CrispsAteDecodedOpcodes::ClearDisplay => {
+                // 00E0 -> Clears the screen.
+                for (i, pixel) in self.screen.iter_mut().enumerate() {
+                    *pixel = false;
+                }
+                self.registers.program_counter += 2;
+            }
+            CrispsAteDecodedOpcodes::DrawSpriteAt(x, y, nibble) => {
+                // DXYN -> Draws a sprite at coordinate (VX, VY) that has a width
+                // of 8 pixels and a height of N pixels. Each row of 8 pixels is
+                // read as bit-coded starting from memory location I; I value does
+                // not change after the execution of this instruction. As described
+                // above, VF is set to 1 if any screen pixels are flipped from set
+                //to unset when the sprite is drawn, and to 0 if that does not happen
+                unimplemented!()
+            }
+            CrispsAteDecodedOpcodes::FillFromV0ToVXStartingFromI(v_no) => {
+                // FX65 -> Fills from V0 to VX (including VX) with values from memory,
+                // starting at address I. The offset from I is increased by 1 for each value written,
+                // but I itself is left unmodified.
+                unimplemented!()
+            }
+            CrispsAteDecodedOpcodes::GetKeyToVX(v_no) => {
+                // FX0A -> A key press is awaited, and then stored in VX.
+                // (Blocking Operation. All instruction halted until next key event);
+                unimplemented!()
+            }
+            CrispsAteDecodedOpcodes::Jump(nibble) => {
+                // 1NNN -> Jumps to address NNN
+                // nibble -> NNN
+                self.registers.program_counter = nibble;
+            }
+            CrispsAteDecodedOpcodes::JumpToAddress(nibble) => {
+                // BNNN -> Jump to address NNN plus V0
+                // nibble -> NNN
+                let target = nibble + (self.registers.v_0 as u16);
+                self.registers.program_counter = target;
+            }
+            CrispsAteDecodedOpcodes::Return => {
+                // 00EE -> Returns from a subroutine.
+                self.registers.program_counter = self.runtime.stack[self.runtime.stack_pointer];
+                self.runtime.stack_pointer -= 1;
+            }
+            CrispsAteDecodedOpcodes::SetDelayToVX(v_no) => {
+                // FX15 -> Sets the delay timer to VX.
+                self.timers.delay = *self.find_v_register(v_no);
+                self.registers.program_counter += 2;
+            }
+            CrispsAteDecodedOpcodes::SetIAddress(nibble) => {
+                // ANNN -> Sets I to the address NNN.
+                self.registers.address = nibble;
+                self.registers.program_counter += 2;
+            }
+            CrispsAteDecodedOpcodes::SetIToLocationOfVXChar(v_no) => {
+                // FX29 -> Sets I to the location of the sprite for the character in VX.
+                // Characters 0-F (in hexadecimal) are represented by a 4x5 font.
+                unimplemented!()
+            }
+            CrispsAteDecodedOpcodes::SetSoundToVX(v_no) => {
+                // FX18 -> Sets the sound timer to VX.
+                self.timers.sound = *self.find_v_register(v_no);
+                self.registers.program_counter += 2;
+            }
             CrispsAteDecodedOpcodes::SetVX(v_no, nibble) => {
                 // 6XNN -> Sets VX to NN
                 // v_no -> X
                 // nibble -> NN
 
                 *self.find_v_register(v_no) += nibble;
-                self.registers.program_counter += 1;
+                self.registers.program_counter += 2;
             }
             CrispsAteDecodedOpcodes::SetVXToBitwiseANDWithSaltAndRandom(v_no, nibble) => {
+                // CXNN -> Sets VX to the result of a bitwise and operation on a random number
+                // (Typically: 0 to 255) and NN.
                 unimplemented!()
             }
-            CrispsAteDecodedOpcodes::SetVXToDelayValue(v_no) => unimplemented!(),
-            CrispsAteDecodedOpcodes::SetVXToVXandVY(v_x_no, v_y_no) => unimplemented!(),
-            CrispsAteDecodedOpcodes::SetVXToVXorVY(v_x_no, v_y_no) => unimplemented!(),
-            CrispsAteDecodedOpcodes::SetVXToVXxorVY(v_x_no, v_y_no) => unimplemented!(),
+            CrispsAteDecodedOpcodes::SetVXToDelayValue(v_no) => {
+                // FX07 -> Sets VX to the value of the delay timer.
+                *self.find_v_register(v_no) = self.timers.delay;
+                self.registers.program_counter += 2;
+            }
+            CrispsAteDecodedOpcodes::SetVXToVXandVY(v_x_no, v_y_no) => {
+                // 8XY2 -> Sets VX to VX and VY. (Bitwise AND operation);
+                *self.find_v_register(v_x_no) =
+                    *self.find_v_register(v_x_no) & *self.find_v_register(v_y_no);
+                self.registers.program_counter += 2;
+            }
+            CrispsAteDecodedOpcodes::SetVXToVXorVY(v_x_no, v_y_no) => {
+                // 8XY1 -> 	Sets VX to VX or VY. (Bitwise OR operation);
+                *self.find_v_register(v_x_no) =
+                    *self.find_v_register(v_x_no) | *self.find_v_register(v_y_no);
+                self.registers.program_counter += 2;
+            }
+            CrispsAteDecodedOpcodes::SetVXToVXxorVY(v_x_no, v_y_no) => {
+                // 8XY3 -> Sets VX to VX xor VY.
+                *self.find_v_register(v_x_no) =
+                    *self.find_v_register(v_x_no) ^ *self.find_v_register(v_y_no);
+                self.registers.program_counter += 2;
+            }
             CrispsAteDecodedOpcodes::SetVXToVY(v_x_no, v_y_no) => {
                 // 8XY0 -> 	Sets VX to the value of VY.
                 // v_x_no -> X
                 // v_y_no -> Y
 
                 *self.find_v_register(v_x_no) = *self.find_v_register(v_y_no);
-                self.registers.program_counter += 1;
+                self.registers.program_counter += 2;
             }
-            CrispsAteDecodedOpcodes::SetVXToVYMinusVX(v_x_no, v_y_no) => unimplemented!(),
-            CrispsAteDecodedOpcodes::SkipIfKeyAtVXIsNotPressed(v_no) => unimplemented!(),
-            CrispsAteDecodedOpcodes::SkipIfKeyAtVXIsPressed(v_no) => unimplemented!(),
+            CrispsAteDecodedOpcodes::SetVXToVYMinusVX(v_x_no, v_y_no) => {
+                // 8XY7 -> Sets VX to VY minus VX. VF is set to 0 when there's a borrow, and 1 when there is not.
+                unimplemented!()
+            }
+            CrispsAteDecodedOpcodes::SkipIfKeyAtVXIsNotPressed(v_no) => {
+                // EXA1 -> Skips the next instruction if the key stored in VX is not pressed.
+                // (Usually the next instruction is a jump to skip a code block);
+                unimplemented!()
+            }
+            CrispsAteDecodedOpcodes::SkipIfKeyAtVXIsPressed(v_no) => {
+                // EX9E -> Skips the next instruction if the key stored in VX is pressed.
+                // (Usually the next instruction is a jump to skip a code block);
+                unimplemented!()
+            }
             CrispsAteDecodedOpcodes::SkipIfVXEquals(v_no, nibble) => {
                 // 3XNN -> Skips the next instruction if VX equals NN.
                 // (Usually the next instruction is a jump to skip a code block);
@@ -380,10 +494,10 @@ impl CrispAte {
 
                 match vx == nibble {
                     false => {
-                        self.registers.program_counter += 1;
+                        self.registers.program_counter += 2;
                     }
                     true => {
-                        self.registers.program_counter += 2;
+                        self.registers.program_counter += 4;
                     }
                 }
             }
@@ -398,10 +512,10 @@ impl CrispAte {
 
                 match vx == vy {
                     false => {
-                        self.registers.program_counter += 1;
+                        self.registers.program_counter += 2;
                     }
                     true => {
-                        self.registers.program_counter += 2;
+                        self.registers.program_counter += 4;
                     }
                 }
             }
@@ -415,19 +529,45 @@ impl CrispAte {
 
                 match vx == nibble {
                     false => {
-                        self.registers.program_counter += 2;
+                        self.registers.program_counter += 4;
                     }
                     true => {
-                        self.registers.program_counter += 1;
+                        self.registers.program_counter += 2;
                     }
                 }
             }
-            CrispsAteDecodedOpcodes::SkipIfVXNotEqualVY(v_x_no, v_y_no) => unimplemented!(),
-            CrispsAteDecodedOpcodes::StoreBinaryCodedDecimalVX(v_no) => unimplemented!(),
-            CrispsAteDecodedOpcodes::StoreFromV0ToVXStartingFromI(v_no) => unimplemented!(),
-            CrispsAteDecodedOpcodes::StoreLeastBitOfVXAndShiftVXRight(v_no) => unimplemented!(),
-            CrispsAteDecodedOpcodes::StoreMostBitOfVXAndShiftVXLeft(v_no) => unimplemented!(),
-            CrispsAteDecodedOpcodes::SubtractVYFromVX(v_x_no, v_y_no) => unimplemented!(),
+            CrispsAteDecodedOpcodes::SkipIfVXNotEqualVY(v_x_no, v_y_no) => {
+                // 9XY0 -> Skips the next instruction if VX does not equal VY.
+                // (Usually the next instruction is a jump to skip a code block);
+                unimplemented!()
+            }
+            CrispsAteDecodedOpcodes::StoreBinaryCodedDecimalVX(v_no) => {
+                // FX33 -> Stores the binary-coded decimal representation of VX,
+                // with the most significant of three digits at the address in I,
+                // the middle digit at I plus 1, and the least significant digit at I plus 2.
+                // (In other words, take the decimal representation of VX,
+                // place the hundreds digit in memory at location in I,
+                // the tens digit at location I+1, and the ones digit at location I+2.);
+                unimplemented!()
+            }
+            CrispsAteDecodedOpcodes::StoreFromV0ToVXStartingFromI(v_no) => {
+                // FX55 -> Stores from V0 to VX (including VX) in memory,
+                // starting at address I. The offset from I is increased by 1 for each value written,
+                // but I itself is left unmodified
+                unimplemented!()
+            }
+            CrispsAteDecodedOpcodes::StoreLeastBitOfVXAndShiftVXRight(v_no) => {
+                // 8XY6 -> Stores the least significant bit of VX in VF and then shifts VX to the right by 1.
+                unimplemented!()
+            }
+            CrispsAteDecodedOpcodes::StoreMostBitOfVXAndShiftVXLeft(v_no) => {
+                // 8XYE -> Stores the most significant bit of VX in VF and then shifts VX to the left by 1.
+                unimplemented!()
+            }
+            CrispsAteDecodedOpcodes::SubtractVYFromVX(v_x_no, v_y_no) => {
+                // 8XY5 -> VY is subtracted from VX. VF is set to 0 when there's a borrow, and 1 when there is not.
+                unimplemented!()
+            }
         }
     }
 
