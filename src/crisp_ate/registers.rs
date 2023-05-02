@@ -2,6 +2,7 @@ use std::fmt;
 
 use crate::utils::hex;
 
+#[derive(PartialEq, Eq)]
 pub enum CrispsAteDecodedOpcodes {
     // TO-DO -> fix: 0NNN, 1NNN, 2NNN, ANNN, BNNN, DXYN
     // 12-bit max! (0-4095) 16-bit is too large (0-65535)
@@ -10,36 +11,36 @@ pub enum CrispsAteDecodedOpcodes {
     Return,                                     // 00EE
     Jump(u16),                                  // 1NNN (NNN)
     CallSubRoutine(u16),                        // 2NNN (NNN)
-    SkipIfVXEquals(u8, u8),                     // 3XNN (X, NN)
-    SkipIfVXNotEqual(u8, u8),                   // 4XNN (X, NN)
-    SkipIfVXEqualsVY(u8, u8),                   // 5XY0 (X, Y)
-    SetVX(u8, u8),                              // 6XNN (X, NN)
-    AddToVX(u8, u8),                            // 7XNN (X, NN)
-    SetVXToVY(u8, u8),                          // 8XY0 (X, Y)
-    SetVXToVXorVY(u8, u8),                      // 8XY1 (X, Y)
-    SetVXToVXandVY(u8, u8),                     // 8XY2 (X, Y)
-    SetVXToVXxorVY(u8, u8),                     // 8XY3 (X, Y)
-    AddVYtoVX(u8, u8),                          // 8XY4 (X, Y)
-    SubtractVYFromVX(u8, u8),                   // 8XY5 (X, Y)
-    StoreLeastBitOfVXAndShiftVXRight(u8),       // 8XY6 (X)
-    SetVXToVYMinusVX(u8, u8),                   // 8XY7 (X, Y)
-    StoreMostBitOfVXAndShiftVXLeft(u8),         // 8XYE (X)
-    SkipIfVXNotEqualVY(u8, u8),                 // 9XY0 (X, y)
+    SkipIfVXEquals(u16, u16),                     // 3XNN (X, NN)
+    SkipIfVXNotEqual(u16, u16),                   // 4XNN (X, NN)
+    SkipIfVXEqualsVY(u16, u16),                   // 5XY0 (X, Y)
+    SetVX(u16, u16),                              // 6XNN (X, NN)
+    AddToVX(u16, u16),                            // 7XNN (X, NN)
+    SetVXToVY(u16, u16),                          // 8XY0 (X, Y)
+    SetVXToVXorVY(u16, u16),                      // 8XY1 (X, Y)
+    SetVXToVXandVY(u16, u16),                     // 8XY2 (X, Y)
+    SetVXToVXxorVY(u16, u16),                     // 8XY3 (X, Y)
+    AddVYtoVX(u16, u16),                          // 8XY4 (X, Y)
+    SubtractVYFromVX(u16, u16),                   // 8XY5 (X, Y)
+    StoreLeastBitOfVXAndShiftVXRight(u16),       // 8XY6 (X)
+    SetVXToVYMinusVX(u16, u16),                   // 8XY7 (X, Y)
+    StoreMostBitOfVXAndShiftVXLeft(u16),         // 8XYE (X)
+    SkipIfVXNotEqualVY(u16, u16),                 // 9XY0 (X, y)
     SetIAddress(u16),                           // ANNN (NNN)
     JumpToAddress(u16),                         // BNNN (NNN)
-    SetVXToBitwiseANDWithSaltAndRandom(u8, u8), // CXNN (X, NN)
-    DrawSpriteAt(u8, u8, u8),                   // DXYN (X, Y, N)
-    SkipIfKeyAtVXIsPressed(u8),                 // EX9E (X)
-    SkipIfKeyAtVXIsNotPressed(u8),              // EXA1 (X)
-    SetVXToDelayValue(u8),                      // FX07 (X)
-    GetKeyToVX(u8),                             // FX0A (X)
-    SetDelayToVX(u8),                           // FX15 (X)
-    SetSoundToVX(u8),                           // FX18 (X)
-    AddVXToI(u8),                               // FX1E (X)
-    SetIToLocationOfVXChar(u8),                 // FX29 (X)
-    StoreBinaryCodedDecimalVX(u8),              // FX33 (X)
-    StoreFromV0ToVXStartingFromI(u8),           // FX55 (X)
-    FillFromV0ToVXStartingFromI(u8),            // FX65 (X)
+    SetVXToBitwiseANDWithSaltAndRandom(u16, u16), // CXNN (X, NN)
+    DrawSpriteAt(u16, u16, u16),                   // DXYN (X, Y, N)
+    SkipIfKeyAtVXIsPressed(u16),                 // EX9E (X)
+    SkipIfKeyAtVXIsNotPressed(u16),              // EXA1 (X)
+    SetVXToDelayValue(u16),                      // FX07 (X)
+    GetKeyToVX(u16),                             // FX0A (X)
+    SetDelayToVX(u16),                           // FX15 (X)
+    SetSoundToVX(u16),                           // FX18 (X)
+    AddVXToI(u16),                               // FX1E (X)
+    SetIToLocationOfVXChar(u16),                 // FX29 (X)
+    StoreBinaryCodedDecimalVX(u16),              // FX33 (X)
+    StoreFromV0ToVXStartingFromI(u16),           // FX55 (X)
+    FillFromV0ToVXStartingFromI(u16),            // FX65 (X)
     None(u16),                                  // Unknown
 }
 
@@ -168,8 +169,8 @@ impl fmt::Debug for CrispsAteDecodedOpcodes {
 
 #[derive(Debug)]
 pub struct CrispAteTimers {
-    pub delay: u8,
-    pub sound: u8,
+    pub delay: u16,
+    pub sound: u16,
 }
 
 impl CrispAteTimers {
@@ -180,22 +181,22 @@ impl CrispAteTimers {
 
 #[derive(Debug)]
 pub struct CrispAteRegisters {
-    pub v_0: u8,
-    pub v_1: u8,
-    pub v_2: u8,
-    pub v_3: u8,
-    pub v_4: u8,
-    pub v_5: u8,
-    pub v_6: u8,
-    pub v_7: u8,
-    pub v_8: u8,
-    pub v_9: u8,
-    pub v_a: u8,
-    pub v_b: u8,
-    pub v_c: u8,
-    pub v_d: u8,
-    pub v_e: u8,
-    pub v_f: u8,
+    pub v_0: u16,
+    pub v_1: u16,
+    pub v_2: u16,
+    pub v_3: u16,
+    pub v_4: u16,
+    pub v_5: u16,
+    pub v_6: u16,
+    pub v_7: u16,
+    pub v_8: u16,
+    pub v_9: u16,
+    pub v_a: u16,
+    pub v_b: u16,
+    pub v_c: u16,
+    pub v_d: u16,
+    pub v_e: u16,
+    pub v_f: u16,
     pub address: u16,
     pub program_counter: u16,
 }

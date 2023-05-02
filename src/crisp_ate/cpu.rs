@@ -2,6 +2,148 @@ use crate::utils::hex;
 use super::runtime::CrispAteRuntime;
 use super::registers::{ CrispAteRegisters, CrispAteTimers, CrispsAteDecodedOpcodes };
 
+enum Digit {
+    First(u16),
+    Second(u16),
+    Third(u16),
+    Fourth(u16),
+    LastTwo(u16),
+    LastThree(u16),
+}
+
+fn get_digit(input: Digit) -> u16 {
+    const FIRST_DIGIT: u16 = 0xF000;
+    const SECOND_DIGIT: u16 = 0x0F00;
+    const THIRD_DIGIT: u16 = 0x00F0;
+    const LAST_DIGIT: u16 = 0x000F;
+    const LAST_TWO_DIGITS: u16 = 0x00FF;
+    const LAST_THREE_DIGITS: u16 = 0x0FFF;
+
+    match input {
+        Digit::First(opcode) => (opcode & FIRST_DIGIT) >> 12,
+        Digit::Second(opcode) => (opcode & SECOND_DIGIT) >> 8,
+        Digit::Third(opcode) => (opcode & THIRD_DIGIT) >> 4,
+        Digit::Fourth(opcode) => opcode & LAST_DIGIT,
+        Digit::LastTwo(opcode) => {
+            let last_two_digits_hex = opcode & LAST_TWO_DIGITS;
+            u16::from_str_radix(&format!("{:X}", last_two_digits_hex), 16).unwrap()
+        }
+        Digit::LastThree(opcode) => {
+            let last_three_digits_hex = opcode & LAST_THREE_DIGITS;
+
+            u16::from_str_radix(&format!("{:X}", last_three_digits_hex), 16).unwrap()
+        }
+    }
+}
+
+fn decode_opcode(opcode: u16) -> CrispsAteDecodedOpcodes {
+    match get_digit(Digit::First(opcode)) {
+        0x0 => match get_digit(Digit::Fourth(opcode)) {
+            0x0 => CrispsAteDecodedOpcodes::ClearDisplay,
+            0xE => CrispsAteDecodedOpcodes::Return,
+            _ => CrispsAteDecodedOpcodes::Call(get_digit(Digit::LastThree(opcode))),
+        },
+        0xA => CrispsAteDecodedOpcodes::SetIAddress(get_digit(Digit::LastThree(opcode))),
+        0xB => CrispsAteDecodedOpcodes::JumpToAddress(get_digit(Digit::LastThree(opcode))),
+        0xC => CrispsAteDecodedOpcodes::SetVXToBitwiseANDWithSaltAndRandom(
+            get_digit(Digit::Second(opcode)),
+            get_digit(Digit::LastTwo(opcode)),
+            ),
+        0xD => CrispsAteDecodedOpcodes::DrawSpriteAt(
+            get_digit(Digit::Second(opcode)),
+            get_digit(Digit::Third(opcode)),
+            get_digit(Digit::Fourth(opcode)),
+            ),
+        0xE => match get_digit(Digit::Fourth(opcode)){
+            0x1 => {
+                CrispsAteDecodedOpcodes::SkipIfKeyAtVXIsNotPressed(get_digit(Digit::Second(opcode)))
+            }
+            0xE => CrispsAteDecodedOpcodes::SkipIfKeyAtVXIsPressed(get_digit(Digit::Second(opcode))),
+            _ => CrispsAteDecodedOpcodes::None(opcode),
+        },
+        0xF => match get_digit(Digit::LastTwo(opcode)) {
+            0x07 => CrispsAteDecodedOpcodes::SetVXToDelayValue(get_digit(Digit::Second(opcode))),
+            0x0A => CrispsAteDecodedOpcodes::GetKeyToVX(get_digit(Digit::Second(opcode))),
+            0x15 => CrispsAteDecodedOpcodes::SetDelayToVX(get_digit(Digit::Second(opcode))),
+            0x18 => CrispsAteDecodedOpcodes::SetSoundToVX(get_digit(Digit::Second(opcode))),
+            0x1E => CrispsAteDecodedOpcodes::AddVXToI(get_digit(Digit::Second(opcode))),
+            0x29 => CrispsAteDecodedOpcodes::SetIToLocationOfVXChar(get_digit(Digit::Second(opcode))),
+            0x33 => {
+                CrispsAteDecodedOpcodes::StoreBinaryCodedDecimalVX(get_digit(Digit::Second(opcode)))
+            }
+            0x55 => {
+                CrispsAteDecodedOpcodes::StoreFromV0ToVXStartingFromI(get_digit(Digit::Second(opcode)))
+            }
+            0x65 => {
+                CrispsAteDecodedOpcodes::FillFromV0ToVXStartingFromI(get_digit(Digit::Second(opcode)))
+            }
+            _ => CrispsAteDecodedOpcodes::None(opcode),
+        },
+        0x1 => CrispsAteDecodedOpcodes::Jump(get_digit(Digit::LastThree(opcode))),
+        0x2 => CrispsAteDecodedOpcodes::CallSubRoutine(get_digit(Digit::LastThree(opcode))),
+        0x3 => CrispsAteDecodedOpcodes::SkipIfVXEquals(
+            get_digit(Digit::Second(opcode)),
+            get_digit(Digit::LastTwo(opcode)),
+            ),
+        0x4 => CrispsAteDecodedOpcodes::SkipIfVXNotEqual(
+            get_digit(Digit::Second(opcode)),
+            get_digit(Digit::LastTwo(opcode)),
+            ),
+        0x5 => CrispsAteDecodedOpcodes::SkipIfVXEqualsVY(
+            get_digit(Digit::Second(opcode)),
+            get_digit(Digit::LastTwo(opcode)),
+            ),
+        0x6 => {
+            CrispsAteDecodedOpcodes::SetVX(get_digit(Digit::Second(opcode)), get_digit(Digit::LastTwo(opcode)))
+        }
+        0x7 => {
+            CrispsAteDecodedOpcodes::AddToVX(get_digit(Digit::Second(opcode)), get_digit(Digit::LastTwo(opcode)))
+        }
+        0x8 => match get_digit(Digit::Fourth(opcode)) {
+            0x0 => CrispsAteDecodedOpcodes::SetVXToVY(
+                get_digit(Digit::Second(opcode)),
+                get_digit(Digit::Third(opcode)),
+                ),
+            0x1 => CrispsAteDecodedOpcodes::SetVXToVXorVY(
+                get_digit(Digit::Second(opcode)),
+                get_digit(Digit::Third(opcode)),
+                ),
+            0x2 => CrispsAteDecodedOpcodes::SetVXToVXandVY(
+                get_digit(Digit::Second(opcode)),
+                get_digit(Digit::Third(opcode)),
+                ),
+            0x3 => CrispsAteDecodedOpcodes::SetVXToVXxorVY(
+                get_digit(Digit::Second(opcode)),
+                get_digit(Digit::Third(opcode)),
+                ),
+            0x4 => CrispsAteDecodedOpcodes::AddVYtoVX(
+                get_digit(Digit::Second(opcode)),
+                get_digit(Digit::Third(opcode)),
+                ),
+            0x5 => CrispsAteDecodedOpcodes::SubtractVYFromVX(
+                get_digit(Digit::Second(opcode)),
+                get_digit(Digit::Third(opcode)),
+                ),
+            0x6 => CrispsAteDecodedOpcodes::StoreLeastBitOfVXAndShiftVXRight(
+                get_digit(Digit::Second(opcode)),
+                ),
+            0x7 => CrispsAteDecodedOpcodes::SetVXToVYMinusVX(
+                get_digit(Digit::Second(opcode)),
+                get_digit(Digit::Third(opcode)),
+                ),
+            0xE => {
+                CrispsAteDecodedOpcodes::StoreMostBitOfVXAndShiftVXLeft(get_digit(Digit::Second(opcode)))
+            }
+            _ => CrispsAteDecodedOpcodes::None(opcode),
+        },
+        0x9 => CrispsAteDecodedOpcodes::SkipIfVXNotEqualVY(
+            get_digit(Digit::Second(opcode)),
+            get_digit(Digit::Third(opcode)),
+            ),
+        _ => CrispsAteDecodedOpcodes::None(opcode),
+    }
+}
+
 #[derive(Debug)]
 pub struct CrispAte {
     memory: [u8; 4096],
@@ -87,114 +229,10 @@ impl CrispAte {
 
         println!("Got opcode: {}", hex(opcode));
 
-        match opcode & 0xF000 {
-            0x0000 => match opcode & 0x000F {
-                0x0000 => CrispsAteDecodedOpcodes::ClearDisplay,
-                0x000E => CrispsAteDecodedOpcodes::Return,
-                _ => CrispsAteDecodedOpcodes::Call(opcode & 0x0FFF),
-            },
-            0xA000 => CrispsAteDecodedOpcodes::SetIAddress(opcode & 0x0FFF),
-            0xB000 => CrispsAteDecodedOpcodes::JumpToAddress(opcode & 0x0FFF),
-            0xC000 => CrispsAteDecodedOpcodes::SetVXToBitwiseANDWithSaltAndRandom(
-                (opcode & 0x0F00) as u8,
-                (opcode & 0x00FF) as u8,
-            ),
-            0xD000 => CrispsAteDecodedOpcodes::DrawSpriteAt(
-                (opcode & 0x0F00) as u8,
-                (opcode & 0x00F0) as u8,
-                (opcode & 0x000F) as u8,
-            ),
-            0xE000 => match opcode & 0x000F {
-                0x0001 => {
-                    CrispsAteDecodedOpcodes::SkipIfKeyAtVXIsNotPressed((opcode & 0x0F00) as u8)
-                }
-                0x000E => CrispsAteDecodedOpcodes::SkipIfKeyAtVXIsPressed((opcode & 0x0F00) as u8),
-                _ => CrispsAteDecodedOpcodes::None(opcode),
-            },
-            0xF000 => match opcode & 0x00FF {
-                0x0007 => CrispsAteDecodedOpcodes::SetVXToDelayValue((opcode & 0x0F00) as u8),
-                0x000A => CrispsAteDecodedOpcodes::GetKeyToVX((opcode & 0x0F00) as u8),
-                0x0015 => CrispsAteDecodedOpcodes::SetDelayToVX((opcode & 0x0F00) as u8),
-                0x0018 => CrispsAteDecodedOpcodes::SetSoundToVX((opcode & 0x0F00) as u8),
-                0x001E => CrispsAteDecodedOpcodes::AddVXToI((opcode & 0x0F00) as u8),
-                0x0029 => CrispsAteDecodedOpcodes::SetIToLocationOfVXChar((opcode & 0x0F00) as u8),
-                0x0033 => {
-                    CrispsAteDecodedOpcodes::StoreBinaryCodedDecimalVX((opcode & 0x0F00) as u8)
-                }
-                0x0055 => {
-                    CrispsAteDecodedOpcodes::StoreFromV0ToVXStartingFromI((opcode & 0x0F00) as u8)
-                }
-                0x0065 => {
-                    CrispsAteDecodedOpcodes::FillFromV0ToVXStartingFromI((opcode & 0x0F00) as u8)
-                }
-                _ => CrispsAteDecodedOpcodes::None(opcode),
-            },
-            0x1000 => CrispsAteDecodedOpcodes::Jump(opcode & 0x0FFF),
-            0x2000 => CrispsAteDecodedOpcodes::CallSubRoutine(opcode & 0x0FFF),
-            0x3000 => CrispsAteDecodedOpcodes::SkipIfVXEquals(
-                (opcode & 0x0F00) as u8,
-                (opcode & 0x00FF) as u8,
-            ),
-            0x4000 => CrispsAteDecodedOpcodes::SkipIfVXNotEqual(
-                (opcode & 0x0F00) as u8,
-                (opcode & 0x00FF) as u8,
-            ),
-            0x5000 => CrispsAteDecodedOpcodes::SkipIfVXEqualsVY(
-                (opcode & 0x0F00) as u8,
-                (opcode & 0x00FF) as u8,
-            ),
-            0x6000 => {
-                CrispsAteDecodedOpcodes::SetVX((opcode & 0x0F00) as u8, (opcode & 0x00FF) as u8)
-            }
-            0x7000 => {
-                CrispsAteDecodedOpcodes::AddToVX((opcode & 0x0F00) as u8, (opcode & 0x00FF) as u8)
-            }
-            0x8000 => match opcode & 0x000F {
-                0x0000 => CrispsAteDecodedOpcodes::SetVXToVY(
-                    (opcode & 0x0F00) as u8,
-                    (opcode & 0x00F0) as u8,
-                ),
-                0x0001 => CrispsAteDecodedOpcodes::SetVXToVXorVY(
-                    (opcode & 0x0F00) as u8,
-                    (opcode & 0x00F0) as u8,
-                ),
-                0x0002 => CrispsAteDecodedOpcodes::SetVXToVXandVY(
-                    (opcode & 0x0F00) as u8,
-                    (opcode & 0x00F0) as u8,
-                ),
-                0x0003 => CrispsAteDecodedOpcodes::SetVXToVXxorVY(
-                    (opcode & 0x0F00) as u8,
-                    (opcode & 0x00F0) as u8,
-                ),
-                0x0004 => CrispsAteDecodedOpcodes::AddVYtoVX(
-                    (opcode & 0x0F00) as u8,
-                    (opcode & 0x00F0) as u8,
-                ),
-                0x0005 => CrispsAteDecodedOpcodes::SubtractVYFromVX(
-                    (opcode & 0x0F00) as u8,
-                    (opcode & 0x00F0) as u8,
-                ),
-                0x0006 => CrispsAteDecodedOpcodes::StoreLeastBitOfVXAndShiftVXRight(
-                    (opcode & 0x0F00) as u8,
-                ),
-                0x0007 => CrispsAteDecodedOpcodes::SetVXToVYMinusVX(
-                    (opcode & 0x0F00) as u8,
-                    (opcode & 0x00F0) as u8,
-                ),
-                0x000E => {
-                    CrispsAteDecodedOpcodes::StoreMostBitOfVXAndShiftVXLeft((opcode & 0x0F00) as u8)
-                }
-                _ => CrispsAteDecodedOpcodes::None(opcode),
-            },
-            0x9000 => CrispsAteDecodedOpcodes::SkipIfVXNotEqualVY(
-                (opcode & 0x0F00) as u8,
-                (opcode & 0x00F0) as u8,
-            ),
-            _ => CrispsAteDecodedOpcodes::None(opcode),
-        }
+        decode_opcode(opcode)
     }
 
-    fn find_v_register(&mut self, v_no: u8) -> &mut u8 {
+    fn find_v_register(&mut self, v_no: u16) -> &mut u16 {
         match v_no {
             0x0 => &mut self.registers.v_0,
             0x1 => &mut self.registers.v_1,
@@ -502,5 +540,373 @@ impl CrispAte {
 
         println!("Cicle finished.");
         println!();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    const TEST_OPCODE_1: u16 = 0x1234;
+    const TEST_OPCODE_2: u16 = 0xABCD;
+    const TEST_OPCODE_3: u16 = 0x1FA7;
+
+    #[test]
+    fn can_get_first_digit() {
+        let first_digit = get_digit(Digit::First(TEST_OPCODE_1));
+        assert_eq!(first_digit, 0x1 as u16);
+
+        let first_digit_2 = get_digit(Digit::First(TEST_OPCODE_2));
+        assert_eq!(first_digit_2, 0xA as u16);
+
+        let first_digit_3 = get_digit(Digit::First(TEST_OPCODE_3));
+        assert_eq!(first_digit_3, 0x1 as u16);
+    }
+
+    #[test]
+    fn can_get_second_digit() {
+        let second_digit = get_digit(Digit::Second(TEST_OPCODE_1));
+        assert_eq!(second_digit, 0x2 as u16);
+
+        let second_digit_2 = get_digit(Digit::Second(TEST_OPCODE_2));
+        assert_eq!(second_digit_2, 0xB as u16);
+
+        let second_digit_3 = get_digit(Digit::Second(TEST_OPCODE_3));
+        assert_eq!(second_digit_3, 0xF as u16);
+    }
+
+    #[test]
+    fn can_get_third_digit() {
+        let third_digit = get_digit(Digit::Third(TEST_OPCODE_1));
+        assert_eq!(third_digit, 0x3 as u16);
+
+        let third_digit_2 = get_digit(Digit::Third(TEST_OPCODE_2));
+        assert_eq!(third_digit_2, 0xC as u16);
+
+        let third_digit_3 = get_digit(Digit::Third(TEST_OPCODE_3));
+        assert_eq!(third_digit_3, 0xA as u16);
+    }
+
+    #[test]
+    fn can_get_fourth_digit() {
+        let fourth_digit = get_digit(Digit::Fourth(TEST_OPCODE_1));
+        assert_eq!(fourth_digit, 0x4 as u16);
+
+        let fourth_digit_2 = get_digit(Digit::Fourth(TEST_OPCODE_2));
+        assert_eq!(fourth_digit_2, 0xD as u16);
+
+        let fourth_digit_3 = get_digit(Digit::Fourth(TEST_OPCODE_3));
+        assert_eq!(fourth_digit_3, 0x7 as u16);
+    }
+
+    #[test]
+    fn can_get_last_two_digits() {
+        let last_two_digits = get_digit(Digit::LastTwo(TEST_OPCODE_1));
+        assert_eq!(last_two_digits, 0x34 as u16);
+
+        let last_two_digits_2 = get_digit(Digit::LastTwo(TEST_OPCODE_2));
+        assert_eq!(last_two_digits_2, 0xCD as u16);
+
+        let last_two_digits_3 = get_digit(Digit::LastTwo(TEST_OPCODE_3));
+        assert_eq!(last_two_digits_3, 0xA7 as u16);
+    }
+
+    #[test]
+    fn can_get_last_three_digits() {
+        let last_three_digits = get_digit(Digit::LastThree(TEST_OPCODE_1));
+        assert_eq!(last_three_digits, 0x234 as u16);
+
+        let last_three_digits_2 = get_digit(Digit::LastThree(TEST_OPCODE_2));
+        assert_eq!(last_three_digits_2, 0xBCD as u16);
+
+        let last_three_digits_3 = get_digit(Digit::LastThree(TEST_OPCODE_3));
+        assert_eq!(last_three_digits_3, 0xFA7 as u16);
+    }
+
+    #[test]
+    fn can_properly_get_call_opcode() {
+        //Call(u16) -> 0NNN (NNN)
+        let sample_opcode = 0x0123;
+        let result = decode_opcode(sample_opcode);
+        assert_eq!(result, CrispsAteDecodedOpcodes::Call(0x123));
+    }
+
+    #[test]
+    fn can_properly_get_clear_display_opcode() {
+        //ClearDisplay -> 00E0
+        let sample_opcode = 0x00E0;
+        let result = decode_opcode(sample_opcode);
+        assert_eq!(result, CrispsAteDecodedOpcodes::ClearDisplay);
+    }
+
+    #[test]
+    fn can_properly_get_return_opcode() {
+        // Return -> 00EE
+        let sample_opcode = 0x00EE;
+        let result = decode_opcode(sample_opcode);
+        assert_eq!(result, CrispsAteDecodedOpcodes::Return);
+    }
+
+    #[test]
+    fn can_properly_get_jump_opcode() {
+        // Jump(u16) -> 1NNN
+        let sample_opcode = 0x1987;
+        let result = decode_opcode(sample_opcode);
+        assert_eq!(result, CrispsAteDecodedOpcodes::Jump(0x987));
+    }
+
+    #[test]
+    fn can_properly_get_call_subroutine_opcode() {
+        // CallSubRoutine(u16) -> 2NNN
+        let sample_opcode = 0x2525;
+        let result = decode_opcode(sample_opcode);
+        assert_eq!(result, CrispsAteDecodedOpcodes::CallSubRoutine(0x525));
+    }
+
+    #[test]
+    fn can_properly_get_skipifvxequals_opcode() {
+        // SkipIfVXEquals(u16, u16) -> 3XNN (X, NN)
+        let sample_opcode = 0x3921;
+        let result = decode_opcode(sample_opcode);
+        assert_eq!(result, CrispsAteDecodedOpcodes::SkipIfVXEquals(0x9, 0x21));
+    }
+
+    #[test]
+    fn can_properly_get_skipifvxnotequals_opcode() {
+        // SkipIfVXNotEqual(u16, u16) -> 4XNN (X, NN)
+        let sample_opcode = 0x4198;
+        let result = decode_opcode(sample_opcode);
+        assert_eq!(result, CrispsAteDecodedOpcodes::SkipIfVXNotEqual(0x1, 0x98));
+    }
+
+    #[test]
+    fn can_properly_get_skipifvxequalsvy_opcode() {
+        // SkipIfVXEqualsVY(u16, u16) -> 5XY0 (X, Y)
+        let sample_opcode = 0x5410;
+        let result = decode_opcode(sample_opcode);
+        assert_eq!(result, CrispsAteDecodedOpcodes::SkipIfVXEqualsVY(0x4, 0x1));
+    }
+
+    #[test]
+    fn can_properly_get_setvx_opcode() {
+        // SetVX(u16, u16) -> 6XNN (X, NN)
+        let sample_opcode = 0x6287;
+        let result = decode_opcode(sample_opcode);
+        assert_eq!(result, CrispsAteDecodedOpcodes::SetVX(0x2, 0x87));
+    }
+
+    #[test]
+    fn can_properly_get_addtovx_opcode() {
+        // AddToVX(u16, u16) -> 7XNN (X, NN)
+        let sample_opcode = 0x7927;
+        let result = decode_opcode(sample_opcode);
+        assert_eq!(result, CrispsAteDecodedOpcodes::AddToVX(0x9, 0x27));
+    }
+
+    #[test]
+    fn can_properly_get_setvxtovy_opcode() {
+        // SetVXToVY(u16, u16) -> 8XY0 (X, Y)
+        let sample_opcode = 0x8920;
+        let result = decode_opcode(sample_opcode);
+        assert_eq!(result, CrispsAteDecodedOpcodes::SetVXToVY(0x9, 0x2));
+    }
+
+    #[test]
+    fn can_properly_get_setvxtovxorvy_opcode() {
+        // SetVXToVXorVY(u16, u16) -> 8XY1 (X, Y)
+        let sample_opcode = 0x8291;
+        let result = decode_opcode(sample_opcode);
+        assert_eq!(result, CrispsAteDecodedOpcodes::SetVXToVXorVY(0x2, 0x9));
+    }
+
+    #[test]
+    fn can_properly_get_setvxtovxandvy_opcode() {
+        // SetVXToVXandVY(u16, u16) -> 8XY2 (X, Y)
+        let sample_opcode = 0x8742;
+        let result = decode_opcode(sample_opcode);
+        assert_eq!(result, CrispsAteDecodedOpcodes::SetVXToVXandVY(0x7, 0x4));
+    }
+
+    #[test]
+    fn can_properly_get_setvxtovxxorvy_opcode() {
+        // SetVXToVXxorVY(u16, u16) -> 8XY3 (X, Y)
+        let sample_opcode = 0x8373;
+        let result = decode_opcode(sample_opcode);
+        assert_eq!(result, CrispsAteDecodedOpcodes::SetVXToVXxorVY(0x3, 0x7));
+    }
+
+    #[test]
+    fn can_properly_get_addvytovx_opcode() {
+        // AddVYtoVX(u16, u16) -> 8XY4 (X, Y)
+        let sample_opcode = 0x8714;
+        let result = decode_opcode(sample_opcode);
+        assert_eq!(result, CrispsAteDecodedOpcodes::SetVXToVXandVY(0x7, 0x1));
+    }
+
+    #[test]
+    fn can_properly_get_subtractvyfromvx_opcode() {
+        // SubtractVYFromVX(u16, u16) -> 8XY5 (X, Y)
+        let sample_opcode = 0x8915;
+        let result = decode_opcode(sample_opcode);
+        assert_eq!(result, CrispsAteDecodedOpcodes::SubtractVYFromVX(0x9, 0x1));
+    }
+
+    #[test]
+    fn can_properly_get_storeleastbitofvxandshiftvxright_opcode() {
+        // StoreLeastBitOfVXAndShiftVXRight(u16) -> 8XY6 (X)
+        let sample_opcode = 0x8276;
+        let result = decode_opcode(sample_opcode);
+        assert_eq!(result, CrispsAteDecodedOpcodes::StoreLeastBitOfVXAndShiftVXRight(0x2));
+    }
+
+    #[test]
+    fn can_properly_get_setvxtovyminusvx_opcode() {
+        // SetVXToVYMinusVX(u16, u16) -> 8XY7 (X, Y)
+        let sample_opcode = 0x8717;
+        let result = decode_opcode(sample_opcode);
+        assert_eq!(result, CrispsAteDecodedOpcodes::SetVXToVYMinusVX(0x7, 0x1));
+    }
+
+    #[test]
+    fn can_properly_get_storemostbitofvxandshiftvxleft_opcode() {
+        // StoreMostBitOfVXAndShiftVXLeft(u16) -> 8XYE (X)
+        let sample_opcode = 0x812E;
+        let result = decode_opcode(sample_opcode);
+        assert_eq!(result, CrispsAteDecodedOpcodes::StoreMostBitOfVXAndShiftVXLeft(0x1));
+    }
+
+    #[test]
+    fn can_properly_get_skipifvxnotequalvy_opcode() {
+        // SkipIfVXNotEqualVY(u16, u16) -> 9XY0 (X, y)
+        let sample_opcode = 0x9210;
+        let result = decode_opcode(sample_opcode);
+        assert_eq!(result, CrispsAteDecodedOpcodes::SkipIfVXNotEqualVY(0x2, 0x1));
+    }
+
+    #[test]
+    fn can_properly_get_setiaddress_opcode() {
+        // SetIAddress(u16) -> ANNN (NNN)
+        let sample_opcode = 0xA987;
+        let result = decode_opcode(sample_opcode);
+        assert_eq!(result, CrispsAteDecodedOpcodes::SetIAddress(0x987));
+    }
+
+    #[test]
+    fn can_properly_get_jumptoaddress_opcode() {
+        // JumpToAddress(u16) -> BNNN (NNN)
+        let sample_opcode = 0xB678;
+        let result = decode_opcode(sample_opcode);
+        assert_eq!(result, CrispsAteDecodedOpcodes::JumpToAddress(0x678));
+    }
+
+    #[test]
+    fn can_properly_get_setvxtobitwiseandwithsaltandrandom_opcode() {
+        // SetVXToBitwiseANDWithSaltAndRandom(u16, u16) -> CXNN (X, NN)
+        let sample_opcode = 0xC208;
+        let result = decode_opcode(sample_opcode);
+        assert_eq!(result, CrispsAteDecodedOpcodes::SetVXToBitwiseANDWithSaltAndRandom(0x2, 0x08));
+    }
+
+    #[test]
+    fn can_properly_get_drawspriteat_opcode() {
+        // DrawSpriteAt(u16, u16, u16) -> DXYN (X, Y, N)
+        let sample_opcode = 0xD135;
+        let result = decode_opcode(sample_opcode);
+        assert_eq!(result, CrispsAteDecodedOpcodes::DrawSpriteAt(0x1, 0x3, 0x5));
+    }
+
+    #[test]
+    fn can_properly_get_skipifkeyatvxispressed_opcode() {
+        // SkipIfKeyAtVXIsPressed(u16) -> EX9E (X)
+        let sample_opcode = 0xE69E;
+        let result = decode_opcode(sample_opcode);
+        assert_eq!(result, CrispsAteDecodedOpcodes::SkipIfKeyAtVXIsPressed(0x6));
+    }
+
+    #[test]
+    fn can_properly_get_skipifkeyatvxisnotpressed_opcode() {
+        // SkipIfKeyAtVXIsNotPressed(u16) -> EXA1 (X)
+        let sample_opcode = 0xE8A1;
+        let result = decode_opcode(sample_opcode);
+        assert_eq!(result, CrispsAteDecodedOpcodes::SkipIfKeyAtVXIsNotPressed(0x8));
+    }
+
+    #[test]
+    fn can_properly_get_setvxtodelayvalue_opcode() {
+        // SetVXToDelayValue(u16) -> FX07 (X)
+        let sample_opcode = 0xF107;
+        let result = decode_opcode(sample_opcode);
+        assert_eq!(result, CrispsAteDecodedOpcodes::SetVXToDelayValue(0x1));
+    }
+
+    #[test]
+    fn can_properly_get_getkeytovx_opcode() {
+        // GetKeyToVX(u16) -> FX0A (X)
+        let sample_opcode = 0xF70A;
+        let result = decode_opcode(sample_opcode);
+        assert_eq!(result, CrispsAteDecodedOpcodes::GetKeyToVX(0x7));
+    }
+
+    #[test]
+    fn can_properly_get_setdelaytovx_opcode() {
+        // SetDelayToVX(u16) -> FX15 (X)
+        let sample_opcode = 0xF415;
+        let result = decode_opcode(sample_opcode);
+        assert_eq!(result, CrispsAteDecodedOpcodes::SetDelayToVX(0x4));
+    }
+
+    #[test]
+    fn can_properly_get_setsoundtovx_opcode() {
+        // SetSoundToVX(u16) -> FX18 (X)
+        let sample_opcode = 0xF018;
+        let result = decode_opcode(sample_opcode);
+        assert_eq!(result, CrispsAteDecodedOpcodes::SetSoundToVX(0x0));
+    }
+
+    #[test]
+    fn can_properly_get_addvxtoi_opcode() {
+        // AddVXToI(u16) -> FX1E (X)
+        let sample_opcode = 0xF91E;
+        let result = decode_opcode(sample_opcode);
+        assert_eq!(result, CrispsAteDecodedOpcodes::AddVXToI(0x9));
+    }
+
+    #[test]
+    fn can_properly_get_setitolocationofvxchar_opcode() {
+        // SetIToLocationOfVXChar(u16) -> FX29 (X)
+        let sample_opcode = 0xF329;
+        let result = decode_opcode(sample_opcode);
+        assert_eq!(result, CrispsAteDecodedOpcodes::AddVXToI(0x3));
+    }
+
+    #[test]
+    fn can_properly_get_storebinarycodeddecimalvx_opcode() {
+        // StoreBinaryCodedDecimalVX(u16) -> FX33 (X)
+        let sample_opcode = 0xF133;
+        let result = decode_opcode(sample_opcode);
+        assert_eq!(result, CrispsAteDecodedOpcodes::StoreBinaryCodedDecimalVX(0x1));
+    }
+
+    #[test]
+    fn can_properly_get_storefromv0tovxstartingfromi_opcode() {
+        // StoreFromV0ToVXStartingFromI(u16) -> FX55 (X)
+        let sample_opcode = 0xF955;
+        let result = decode_opcode(sample_opcode);
+        assert_eq!(result, CrispsAteDecodedOpcodes::StoreFromV0ToVXStartingFromI(0x9));
+    }
+
+    #[test]
+    fn can_properly_get_fillfromv0tovxstartingfromi_opcode() {
+        // FillFromV0ToVXStartingFromI(u16) -> FX65 (X)
+        let sample_opcode = 0xF365;
+        let result = decode_opcode(sample_opcode);
+        assert_eq!(result, CrispsAteDecodedOpcodes::FillFromV0ToVXStartingFromI(0x3));
+    }
+
+    #[test]
+    fn can_properly_get_none_opcode() {
+        // None(u16) -> Unknown
+        let sample_opcode = 0xE26A;
+        let result = decode_opcode(sample_opcode);
+        assert_eq!(result, CrispsAteDecodedOpcodes::None(sample_opcode));
     }
 }
