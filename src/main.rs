@@ -1,8 +1,8 @@
 mod crisp_ate;
 mod utils;
+use crisp_ate::cpu::CrispAte;
 use std::env;
 use std::io::ErrorKind;
-use crisp_ate::cpu::CrispAte;
 
 const MAX_PROGRAM_SIZE: usize = 3584;
 
@@ -71,7 +71,7 @@ fn main() {
             }
 
             create_and_start_vm(bytes, available_memory)
-        },
+        }
         None => {
             eprintln!("Failed to get program bytes!");
             std::process::exit(1);
