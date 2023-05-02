@@ -552,7 +552,7 @@ impl CrispAte {
 }
 
 #[cfg(test)]
-mod tests {
+mod digit_tests {
     use super::*;
     const TEST_OPCODE_1: u16 = 0x1234;
     const TEST_OPCODE_2: u16 = 0xABCD;
@@ -629,6 +629,11 @@ mod tests {
         let last_three_digits_3 = get_digit(Digit::LastThree(TEST_OPCODE_3));
         assert_eq!(last_three_digits_3, 0xFA7 as u16);
     }
+}
+
+#[cfg(test)]
+mod opcode_tests {
+    use super::*;
 
     #[test]
     fn can_properly_get_call_opcode() {
