@@ -2,6 +2,7 @@ use super::registers::{CrispAteRegisters, CrispAteTimers, CrispsAteDecodedOpcode
 use super::runtime::CrispAteRuntime;
 use crate::utils::hex;
 
+#[derive(Debug)]
 enum Digit {
     First(u16),
     Second(u16),
@@ -19,7 +20,7 @@ fn get_digit(input: Digit) -> u16 {
     const LAST_TWO_DIGITS: u16 = 0x00FF;
     const LAST_THREE_DIGITS: u16 = 0x0FFF;
 
-    match input {
+    let digit_to_return = match input {
         Digit::First(opcode) => (opcode & FIRST_DIGIT) >> 12,
         Digit::Second(opcode) => (opcode & SECOND_DIGIT) >> 8,
         Digit::Third(opcode) => (opcode & THIRD_DIGIT) >> 4,
@@ -33,7 +34,23 @@ fn get_digit(input: Digit) -> u16 {
 
             u16::from_str_radix(&format!("{:X}", last_three_digits_hex), 16).unwrap()
         }
-    }
+    };
+
+    let input_as_hex = match input {
+        Digit::First(opcode) => format!("Digit::First({:X})", opcode),
+        Digit::Second(opcode) => format!("Digit::Second({:X})", opcode),
+        Digit::Third(opcode) => format!("Digit::Third({:X})", opcode),
+        Digit::Last(opcode) => format!("Digit::Last({:X})", opcode),
+        Digit::LastTwo(opcode) => format!("Digit::LastTwo({:X})", opcode),
+        Digit::LastThree(opcode) => format!("Digit::LastThree({:X})", opcode),
+    };
+
+    println!(
+        "[GET_DIGIT] Input: {:?} | Digit to return: {:X}",
+        input_as_hex, digit_to_return
+    );
+
+    digit_to_return
 }
 
 fn decode_opcode(opcode: u16) -> CrispsAteDecodedOpcodes {
@@ -95,7 +112,7 @@ fn decode_opcode(opcode: u16) -> CrispsAteDecodedOpcodes {
         ),
         0x5 => CrispsAteDecodedOpcodes::SkipIfVXEqualsVY(
             get_digit(Digit::Second(opcode)),
-            get_digit(Digit::LastTwo(opcode)),
+            get_digit(Digit::Third(opcode)),
         ),
         0x6 => CrispsAteDecodedOpcodes::SetVX(
             get_digit(Digit::Second(opcode)),
@@ -152,7 +169,7 @@ fn decode_opcode(opcode: u16) -> CrispsAteDecodedOpcodes {
 
 #[derive(Debug)]
 pub struct CrispAte {
-    memory: [u8; 4096],
+    memory: [u16; 4096],
     pub registers: CrispAteRegisters,
     screen: [bool; 64 * 32],
     pub timers: CrispAteTimers,
@@ -161,7 +178,7 @@ pub struct CrispAte {
 
 impl CrispAte {
     pub fn new() -> Self {
-        let memory: [u8; 4096] = [0; 4096];
+        let memory: [u16; 4096] = [0; 4096];
         let registers = CrispAteRegisters::new();
         let screen: [bool; 64 * 32] = [false; 64 * 32];
         let timers = CrispAteTimers::new();
@@ -178,7 +195,7 @@ impl CrispAte {
 
     pub fn init(&mut self, file_bytes: [u8; 3584]) {
         // populate memory with font
-        let fontset: [u8; 80] = [
+        let fontset: [u16; 80] = [
             0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
             0x20, 0x60, 0x20, 0x20, 0x70, // 1
             0xF0, 0x10, 0xF0, 0x80, 0xF0, // 2
@@ -200,7 +217,7 @@ impl CrispAte {
         // load program in memory, starting in 0x200
         let mut fb_index = 0;
         for address in 0x200..=0xFFF {
-            self.memory[address] = file_bytes[fb_index];
+            self.memory[address] = file_bytes[fb_index].into();
 
             fb_index += 1;
         }
@@ -314,14 +331,39 @@ impl CrispAte {
                 }
                 self.registers.program_counter += 2;
             }
-            CrispsAteDecodedOpcodes::DrawSpriteAt(x, y, nibble) => {
+            CrispsAteDecodedOpcodes::DrawSpriteAt(x, y, height) => {
                 // DXYN -> Draws a sprite at coordinate (VX, VY) that has a width
                 // of 8 pixels and a height of N pixels. Each row of 8 pixels is
                 // read as bit-coded starting from memory location I; I value does
                 // not change after the execution of this instruction. As described
                 // above, VF is set to 1 if any screen pixels are flipped from set
                 //to unset when the sprite is drawn, and to 0 if that does not happen
-                unimplemented!()
+
+                let x_coordinate = *self.find_v_register(x) & 63;
+                let y_coordinate = *self.find_v_register(y) & 31;
+
+                let mut pixel: u16;
+
+                self.registers.v_f = 0;
+
+                for row in 0..height {
+                    pixel = self.memory[(self.registers.address + row) as usize];
+
+                    for col in 0..8 {
+                        if pixel & (0x80 >> col) != 0 {
+                            let offset: usize =
+                                ((x_coordinate + col) + (y_coordinate + row) * 64).into();
+                            if self.screen[offset] == true {
+                                self.registers.v_f = 1;
+                            }
+
+                            self.screen[offset] = !self.screen[offset];
+                        }
+                    }
+                }
+
+                self.registers.draw_flag = true;
+                self.registers.program_counter += 2;
             }
             CrispsAteDecodedOpcodes::FillFromV0ToVXStartingFromI(v_no) => {
                 // FX65 -> Fills from V0 to VX (including VX) with values from memory,
@@ -752,7 +794,7 @@ mod opcode_tests {
         // AddVYtoVX(u16, u16) -> 8XY4 (X, Y)
         let sample_opcode = 0x8714;
         let result = decode_opcode(sample_opcode);
-        assert_eq!(result, CrispsAteDecodedOpcodes::SetVXToVXandVY(0x7, 0x1));
+        assert_eq!(result, CrispsAteDecodedOpcodes::AddVYtoVX(0x7, 0x1));
     }
 
     #[test]
@@ -903,7 +945,7 @@ mod opcode_tests {
         // SetIToLocationOfVXChar(u16) -> FX29 (X)
         let sample_opcode = 0xF329;
         let result = decode_opcode(sample_opcode);
-        assert_eq!(result, CrispsAteDecodedOpcodes::AddVXToI(0x3));
+        assert_eq!(result, CrispsAteDecodedOpcodes::SetIToLocationOfVXChar(0x3));
     }
 
     #[test]
@@ -945,5 +987,223 @@ mod opcode_tests {
         let sample_opcode = 0xE26A;
         let result = decode_opcode(sample_opcode);
         assert_eq!(result, CrispsAteDecodedOpcodes::None(sample_opcode));
+    }
+}
+
+#[cfg(test)]
+mod execution_tests {
+    use super::*;
+
+    /*
+        // Call(u16) -> 0NNN (NNN)
+    Return,                                       // 00EE
+    CallSubRoutine(u16),                          // 2NNN (NNN)
+    SkipIfVXEquals(u16, u16),                     // 3XNN (X, NN)
+    SkipIfVXNotEqual(u16, u16),                   // 4XNN (X, NN)
+    SkipIfVXEqualsVY(u16, u16),                   // 5XY0 (X, Y)
+    SetVXToVY(u16, u16),                          // 8XY0 (X, Y)
+    SetVXToVXorVY(u16, u16),                      // 8XY1 (X, Y)
+    SetVXToVXandVY(u16, u16),                     // 8XY2 (X, Y)
+    SetVXToVXxorVY(u16, u16),                     // 8XY3 (X, Y)
+    AddVYtoVX(u16, u16),                          // 8XY4 (X, Y)
+    SubtractVYFromVX(u16, u16),                   // 8XY5 (X, Y)
+    StoreLeastBitOfVXAndShiftVXRight(u16),        // 8XY6 (X)
+    SetVXToVYMinusVX(u16, u16),                   // 8XY7 (X, Y)
+    StoreMostBitOfVXAndShiftVXLeft(u16),          // 8XYE (X)
+    SkipIfVXNotEqualVY(u16, u16),                 // 9XY0 (X, y)
+    JumpToAddress(u16),                           // BNNN (NNN)
+    SetVXToBitwiseANDWithSaltAndRandom(u16, u16), // CXNN (X, NN)
+    SkipIfKeyAtVXIsPressed(u16),                  // EX9E (X)
+    SkipIfKeyAtVXIsNotPressed(u16),               // EXA1 (X)
+    SetVXToDelayValue(u16),                       // FX07 (X)
+    GetKeyToVX(u16),                              // FX0A (X)
+    SetDelayToVX(u16),                            // FX15 (X)
+    SetSoundToVX(u16),                            // FX18 (X)
+    AddVXToI(u16),                                // FX1E (X)
+    SetIToLocationOfVXChar(u16),                  // FX29 (X)
+    StoreBinaryCodedDecimalVX(u16),               // FX33 (X)
+    StoreFromV0ToVXStartingFromI(u16),            // FX55 (X)
+    FillFromV0ToVXStartingFromI(u16),             // FX65 (X)
+    None(u16),                                    // Unknown
+    */
+
+    #[test]
+    fn can_properly_execute_clearscreen_opcode() {
+        // ClearDisplay -> 00E0
+        let mut sut = CrispAte::new();
+        sut.screen = [true; 64 * 32];
+        sut.execute(decode_opcode(0x00E0));
+
+        assert_eq!(sut.screen, [false; 64 * 32])
+    }
+
+    #[test]
+    fn can_properly_execute_jump_opcode() {
+        // Jump(u16) -> 1NNN (NNN)
+        let mut sut = CrispAte::new();
+        sut.registers.program_counter = 1;
+        sut.execute(decode_opcode(0x1200));
+
+        assert_eq!(sut.registers.program_counter, 0x200);
+    }
+
+    #[test]
+    fn can_properly_execute_setvx_opcode() {
+        // SetVX(u16, u16) -> 6XNN (X, NN)
+        let mut sut = CrispAte::new();
+
+        sut.execute(decode_opcode(0x6001));
+        assert_eq!(sut.registers.v_0, 0x01);
+
+        sut.execute(decode_opcode(0x6102));
+        assert_eq!(sut.registers.v_1, 0x02);
+
+        sut.execute(decode_opcode(0x6203));
+        assert_eq!(sut.registers.v_2, 0x03);
+
+        sut.execute(decode_opcode(0x6304));
+        assert_eq!(sut.registers.v_3, 0x04);
+
+        sut.execute(decode_opcode(0x6405));
+        assert_eq!(sut.registers.v_4, 0x05);
+
+        sut.execute(decode_opcode(0x6506));
+        assert_eq!(sut.registers.v_5, 0x06);
+
+        sut.execute(decode_opcode(0x6607));
+        assert_eq!(sut.registers.v_6, 0x07);
+
+        sut.execute(decode_opcode(0x6708));
+        assert_eq!(sut.registers.v_7, 0x08);
+
+        sut.execute(decode_opcode(0x6809));
+        assert_eq!(sut.registers.v_8, 0x09);
+
+        sut.execute(decode_opcode(0x6910));
+        assert_eq!(sut.registers.v_9, 0x10);
+
+        sut.execute(decode_opcode(0x6A11));
+        assert_eq!(sut.registers.v_a, 0x11);
+
+        sut.execute(decode_opcode(0x6B12));
+        assert_eq!(sut.registers.v_b, 0x12);
+
+        sut.execute(decode_opcode(0x6C13));
+        assert_eq!(sut.registers.v_c, 0x13);
+
+        sut.execute(decode_opcode(0x6D14));
+        assert_eq!(sut.registers.v_d, 0x14);
+
+        sut.execute(decode_opcode(0x6E15));
+        assert_eq!(sut.registers.v_e, 0x15);
+
+        sut.execute(decode_opcode(0x6F16));
+        assert_eq!(sut.registers.v_f, 0x16);
+    }
+
+    #[test]
+    fn can_properly_execute_addtovx_opcode() {
+        // AddToVX(u16, u16) -> 7XNN (X, NN)
+        let mut sut = CrispAte::new();
+
+        sut.registers.v_0 = 0x1;
+        sut.registers.v_1 = 0x1;
+        sut.registers.v_2 = 0x1;
+        sut.registers.v_3 = 0x1;
+        sut.registers.v_4 = 0x1;
+        sut.registers.v_5 = 0x1;
+        sut.registers.v_6 = 0x1;
+        sut.registers.v_7 = 0x1;
+        sut.registers.v_8 = 0x1;
+        sut.registers.v_9 = 0x1;
+        sut.registers.v_a = 0x1;
+        sut.registers.v_b = 0x1;
+        sut.registers.v_c = 0x1;
+        sut.registers.v_d = 0x1;
+        sut.registers.v_e = 0x1;
+        sut.registers.v_f = 0x1;
+
+        sut.execute(decode_opcode(0x7001));
+        assert_eq!(sut.registers.v_0, 0x02);
+        assert_eq!(sut.registers.program_counter, 2);
+
+        sut.execute(decode_opcode(0x7102));
+        assert_eq!(sut.registers.v_1, 0x03);
+        assert_eq!(sut.registers.program_counter, 4);
+
+        sut.execute(decode_opcode(0x7203));
+        assert_eq!(sut.registers.v_2, 0x04);
+        assert_eq!(sut.registers.program_counter, 6);
+
+        sut.execute(decode_opcode(0x7304));
+        assert_eq!(sut.registers.v_3, 0x05);
+        assert_eq!(sut.registers.program_counter, 8);
+
+        sut.execute(decode_opcode(0x7405));
+        assert_eq!(sut.registers.v_4, 0x06);
+        assert_eq!(sut.registers.program_counter, 10);
+
+        sut.execute(decode_opcode(0x7506));
+        assert_eq!(sut.registers.v_5, 0x07);
+        assert_eq!(sut.registers.program_counter, 12);
+
+        sut.execute(decode_opcode(0x7607));
+        assert_eq!(sut.registers.v_6, 0x08);
+        assert_eq!(sut.registers.program_counter, 14);
+
+        sut.execute(decode_opcode(0x7708));
+        assert_eq!(sut.registers.v_7, 0x09);
+        assert_eq!(sut.registers.program_counter, 16);
+
+        sut.execute(decode_opcode(0x7809));
+        assert_eq!(sut.registers.v_8, 0x0A);
+        assert_eq!(sut.registers.program_counter, 18);
+
+        sut.execute(decode_opcode(0x790A));
+        assert_eq!(sut.registers.v_9, 0x0B);
+        assert_eq!(sut.registers.program_counter, 20);
+
+        sut.execute(decode_opcode(0x7A0B));
+        assert_eq!(sut.registers.v_a, 0x0C);
+        assert_eq!(sut.registers.program_counter, 22);
+
+        sut.execute(decode_opcode(0x7B0C));
+        assert_eq!(sut.registers.v_b, 0x0D);
+        assert_eq!(sut.registers.program_counter, 24);
+
+        sut.execute(decode_opcode(0x7C0D));
+        assert_eq!(sut.registers.v_c, 0x0E);
+        assert_eq!(sut.registers.program_counter, 26);
+
+        sut.execute(decode_opcode(0x7D0E));
+        assert_eq!(sut.registers.v_d, 0x0F);
+        assert_eq!(sut.registers.program_counter, 28);
+
+        sut.execute(decode_opcode(0x7E0F));
+        assert_eq!(sut.registers.v_e, 0x10);
+        assert_eq!(sut.registers.program_counter, 30);
+
+        sut.execute(decode_opcode(0x7F10));
+        assert_eq!(sut.registers.v_f, 0x11);
+        assert_eq!(sut.registers.program_counter, 32);
+    }
+
+    #[test]
+    fn can_properly_execute_setiaddress_opcode() {
+        // SetIAddress(u16) -> ANNN (NNN)
+        let mut sut = CrispAte::new();
+        sut.execute(decode_opcode(0xA123));
+
+        assert_eq!(sut.registers.address, 0x123);
+        assert_eq!(sut.registers.program_counter, 2);
+    }
+
+    #[test]
+    fn can_properly_execute_drawspriteat_opcode() {
+        // DrawSpriteAt(u16, u16, u16) -> DXYN (X, Y, N)
+        let mut sut = CrispAte::new();
+        sut.execute(decode_opcode(0xD123));
+
+        assert_eq!(false, true);
     }
 }

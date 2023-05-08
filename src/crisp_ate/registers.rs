@@ -269,6 +269,7 @@ pub struct CrispAteRegisters {
     pub v_f: u16,
     pub address: u16,
     pub program_counter: u16,
+    pub draw_flag: bool,
 }
 
 impl CrispAteRegisters {
@@ -292,6 +293,7 @@ impl CrispAteRegisters {
             v_f: 0,
             address: 0,
             program_counter: 0,
+            draw_flag: false,
         }
     }
 }
