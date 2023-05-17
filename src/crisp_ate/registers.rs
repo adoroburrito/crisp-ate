@@ -221,7 +221,7 @@ pub struct CurrentCrispAteRegisters {
     pub program_counter: u16,
     pub draw_flag: bool,
     pub history: Vec<String>,
-    pub debug_mode: bool
+    pub debug_mode: bool,
 }
 
 impl CurrentCrispAteRegisters {
@@ -247,7 +247,7 @@ impl CurrentCrispAteRegisters {
             program_counter: 0,
             draw_flag: false,
             history: Vec::new(),
-            debug_mode
+            debug_mode,
         }
     }
 }

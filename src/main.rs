@@ -1,12 +1,12 @@
 mod crisp_ate;
-use std::process;
 use std::io;
+use std::process;
 mod utils;
 use crisp_ate::cpu::CrispAte;
 use crisp_ate::display::create_display;
+use dialog::DialogBox;
 use std::env;
 use std::io::ErrorKind;
-use dialog::DialogBox;
 
 use crate::crisp_ate::display::draw_frame;
 
@@ -32,7 +32,11 @@ fn get_program_bytes(filename: &str) -> Option<Vec<u8>> {
     }
 }
 
-fn create_and_start_vm(program_bytes: Vec<u8>, mut available_memory: [u8; MAX_PROGRAM_SIZE], debug_mode: bool) {
+fn create_and_start_vm(
+    program_bytes: Vec<u8>,
+    mut available_memory: [u8; MAX_PROGRAM_SIZE],
+    debug_mode: bool,
+) {
     for (i, byte) in program_bytes.iter().enumerate() {
         available_memory[i] = byte.to_owned()
     }
@@ -51,7 +55,10 @@ fn create_and_start_vm(program_bytes: Vec<u8>, mut available_memory: [u8; MAX_PR
         draw_frame(vm.screen, d);
         vm.emulation_cyle();
 
-        let state_report = format!("History: \n {:#?} \n Continue execution?", vm.registers.history);
+        let state_report = format!(
+            "History: \n {:#?} \n Continue execution?",
+            vm.registers.history
+        );
 
         for report in vm.registers.history {
             history.push(report);

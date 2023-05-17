@@ -34,7 +34,5 @@ pub fn draw_frame(screen_state: [bool; 64 * 32], mut d: RaylibDrawHandle) {
             col = 0;
             row += 1;
         }
-
     }
-
 }

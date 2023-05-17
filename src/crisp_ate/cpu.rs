@@ -1,4 +1,6 @@
-use super::registers::{CurrentCrispAteRegisters, CrispAteTimers, CrispsAteDecodedOpcodes, PastCrispAteRegisters};
+use super::registers::{
+    CrispAteTimers, CrispsAteDecodedOpcodes, CurrentCrispAteRegisters, PastCrispAteRegisters,
+};
 use super::runtime::CrispAteRuntime;
 use crate::utils::hex;
 
@@ -252,7 +254,9 @@ impl CrispAte {
 
         let opcode = result & 0xFFFF;
 
-        self.registers.history.push(format!("Got raw opcode: {}", hex(opcode)));
+        self.registers
+            .history
+            .push(format!("Got raw opcode: {}", hex(opcode)));
 
         decode_opcode(opcode)
     }
@@ -457,7 +461,7 @@ impl CrispAte {
                     0xD => 13,
                     0xE => 14,
                     0xF => 15,
-                    _ => panic!("Sprite matched unknown value!")
+                    _ => panic!("Sprite matched unknown value!"),
                 };
 
                 let location = 0x200 + (5 * offset);
@@ -622,131 +626,152 @@ impl CrispAte {
         }
 
         if self.registers.v_0 != past_registers.v_0 {
-            self.registers.history.push(
-                format!("V_0 -> old: {} | new: {}", past_registers.v_0, self.registers.v_0)
-            )
+            self.registers.history.push(format!(
+                "V_0 -> old: {} | new: {}",
+                past_registers.v_0, self.registers.v_0
+            ))
         }
 
         if self.registers.v_1 != past_registers.v_1 {
-            self.registers.history.push(
-                format!("V_1 -> old: {} | new: {}", past_registers.v_1, self.registers.v_1)
-            )
+            self.registers.history.push(format!(
+                "V_1 -> old: {} | new: {}",
+                past_registers.v_1, self.registers.v_1
+            ))
         }
 
         if self.registers.v_2 != past_registers.v_2 {
-            self.registers.history.push(
-                format!("v_2 -> old: {} | new: {}", past_registers.v_2, self.registers.v_2)
-            )
+            self.registers.history.push(format!(
+                "v_2 -> old: {} | new: {}",
+                past_registers.v_2, self.registers.v_2
+            ))
         }
 
         if self.registers.v_3 != past_registers.v_3 {
-            self.registers.history.push(
-                format!("v_3 -> old: {} | new: {}", past_registers.v_3, self.registers.v_3)
-            )
+            self.registers.history.push(format!(
+                "v_3 -> old: {} | new: {}",
+                past_registers.v_3, self.registers.v_3
+            ))
         }
 
         if self.registers.v_4 != past_registers.v_4 {
-            self.registers.history.push(
-                format!("v_4 -> old: {} | new: {}", past_registers.v_4, self.registers.v_4)
-            )
+            self.registers.history.push(format!(
+                "v_4 -> old: {} | new: {}",
+                past_registers.v_4, self.registers.v_4
+            ))
         }
 
         if self.registers.v_5 != past_registers.v_5 {
-            self.registers.history.push(
-                format!("v_5 -> old: {} | new: {}", past_registers.v_5, self.registers.v_5)
-            )
+            self.registers.history.push(format!(
+                "v_5 -> old: {} | new: {}",
+                past_registers.v_5, self.registers.v_5
+            ))
         }
 
         if self.registers.v_6 != past_registers.v_6 {
-            self.registers.history.push(
-                format!("v_6 -> old: {} | new: {}", past_registers.v_6, self.registers.v_6)
-            )
+            self.registers.history.push(format!(
+                "v_6 -> old: {} | new: {}",
+                past_registers.v_6, self.registers.v_6
+            ))
         }
 
         if self.registers.v_7 != past_registers.v_7 {
-            self.registers.history.push(
-                format!("v_7 -> old: {} | new: {}", past_registers.v_7, self.registers.v_7)
-            )
+            self.registers.history.push(format!(
+                "v_7 -> old: {} | new: {}",
+                past_registers.v_7, self.registers.v_7
+            ))
         }
 
         if self.registers.v_8 != past_registers.v_8 {
-            self.registers.history.push(
-                format!("v_8 -> old: {} | new: {}", past_registers.v_8, self.registers.v_8)
-            )
+            self.registers.history.push(format!(
+                "v_8 -> old: {} | new: {}",
+                past_registers.v_8, self.registers.v_8
+            ))
         }
 
         if self.registers.v_9 != past_registers.v_9 {
-            self.registers.history.push(
-                format!("v_9 -> old: {} | new: {}", past_registers.v_9, self.registers.v_9)
-            )
+            self.registers.history.push(format!(
+                "v_9 -> old: {} | new: {}",
+                past_registers.v_9, self.registers.v_9
+            ))
         }
 
         if self.registers.v_a != past_registers.v_a {
-            self.registers.history.push(
-                format!("v_a -> old: {} | new: {}", past_registers.v_a, self.registers.v_a)
-            )
+            self.registers.history.push(format!(
+                "v_a -> old: {} | new: {}",
+                past_registers.v_a, self.registers.v_a
+            ))
         }
 
         if self.registers.v_b != past_registers.v_b {
-            self.registers.history.push(
-                format!("v_b -> old: {} | new: {}", past_registers.v_b, self.registers.v_b)
-            )
+            self.registers.history.push(format!(
+                "v_b -> old: {} | new: {}",
+                past_registers.v_b, self.registers.v_b
+            ))
         }
 
         if self.registers.v_c != past_registers.v_c {
-            self.registers.history.push(
-                format!("v_c -> old: {} | new: {}", past_registers.v_c, self.registers.v_c)
-            )
+            self.registers.history.push(format!(
+                "v_c -> old: {} | new: {}",
+                past_registers.v_c, self.registers.v_c
+            ))
         }
 
         if self.registers.v_d != past_registers.v_d {
-            self.registers.history.push(
-                format!("v_d -> old: {} | new: {}", past_registers.v_d, self.registers.v_d)
-            )
+            self.registers.history.push(format!(
+                "v_d -> old: {} | new: {}",
+                past_registers.v_d, self.registers.v_d
+            ))
         }
 
         if self.registers.v_e != past_registers.v_e {
-            self.registers.history.push(
-                format!("v_e -> old: {} | new: {}", past_registers.v_e, self.registers.v_e)
-            )
+            self.registers.history.push(format!(
+                "v_e -> old: {} | new: {}",
+                past_registers.v_e, self.registers.v_e
+            ))
         }
 
         if self.registers.v_f != past_registers.v_f {
-            self.registers.history.push(
-                format!("v_f -> old: {} | new: {}", past_registers.v_f, self.registers.v_f)
-            )
+            self.registers.history.push(format!(
+                "v_f -> old: {} | new: {}",
+                past_registers.v_f, self.registers.v_f
+            ))
         }
 
         if self.registers.address != past_registers.address {
-            self.registers.history.push(
-                format!("address -> old: {} | new: {}", past_registers.address, self.registers.address)
-            )
+            self.registers.history.push(format!(
+                "address -> old: {} | new: {}",
+                past_registers.address, self.registers.address
+            ))
         }
 
         if self.registers.program_counter != past_registers.program_counter {
-            self.registers.history.push(
-                format!("program counter -> old: {} | new: {}", past_registers.program_counter, self.registers.program_counter)
-            )
+            self.registers.history.push(format!(
+                "program counter -> old: {} | new: {}",
+                past_registers.program_counter, self.registers.program_counter
+            ))
         }
 
         if self.runtime.stack != past_runtime.stack {
-            self.registers.history.push(
-                format!("runtime stack -> old: {:#?} | new: {:#?}", past_runtime.stack, self.runtime.stack)
-            )
+            self.registers.history.push(format!(
+                "runtime stack -> old: {:#?} | new: {:#?}",
+                past_runtime.stack, self.runtime.stack
+            ))
         }
 
         if self.runtime.stack_pointer != past_runtime.stack_pointer {
-            self.registers.history.push(
-                format!("runtime stack pointer -> old: {} | new: {}", past_runtime.stack_pointer, self.runtime.stack_pointer)
-            )
+            self.registers.history.push(format!(
+                "runtime stack pointer -> old: {} | new: {}",
+                past_runtime.stack_pointer, self.runtime.stack_pointer
+            ))
         }
-
     }
 
     pub fn emulation_cyle(&mut self) {
         println!("Starting emulation cycle...");
         let opcode = self.fetch_and_decode();
-        self.registers.history.push(format!("Detected opcode: {:#?}", opcode));
+        self.registers
+            .history
+            .push(format!("Detected opcode: {:#?}", opcode));
         self.execute(opcode);
 
         if self.timers.delay > 0 {
