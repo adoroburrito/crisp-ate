@@ -99,79 +99,6 @@ impl fmt::Debug for CrispsAteDecodedOpcodes {
             CrispsAteDecodedOpcodes::None(_) => "None (Unknown)",
         };
 
-        let values_hex: Vec<String> = match self {
-            CrispsAteDecodedOpcodes::Call(val1) => vec![hex(*val1)],
-            CrispsAteDecodedOpcodes::ClearDisplay => vec![],
-            CrispsAteDecodedOpcodes::Return => vec![],
-            CrispsAteDecodedOpcodes::Jump(val1) => vec![hex(*val1)],
-            CrispsAteDecodedOpcodes::CallSubRoutine(val1) => vec![hex(*val1)],
-            CrispsAteDecodedOpcodes::SkipIfVXEquals(val1, val2) => {
-                vec![hex(*val1 as u16), hex(*val2 as u16)]
-            }
-            CrispsAteDecodedOpcodes::SkipIfVXNotEqual(val1, val2) => {
-                vec![hex(*val1 as u16), hex(*val2 as u16)]
-            }
-            CrispsAteDecodedOpcodes::SkipIfVXEqualsVY(val1, val2) => {
-                vec![hex(*val1 as u16), hex(*val2 as u16)]
-            }
-            CrispsAteDecodedOpcodes::SetVX(val1, val2) => {
-                vec![hex(*val1 as u16), hex(*val2 as u16)]
-            }
-            CrispsAteDecodedOpcodes::AddToVX(val1, val2) => {
-                vec![hex(*val1 as u16), hex(*val2 as u16)]
-            }
-            CrispsAteDecodedOpcodes::SetVXToVY(val1, val2) => {
-                vec![hex(*val1 as u16), hex(*val2 as u16)]
-            }
-            CrispsAteDecodedOpcodes::SetVXToVXorVY(val1, val2) => {
-                vec![hex(*val1 as u16), hex(*val2 as u16)]
-            }
-            CrispsAteDecodedOpcodes::SetVXToVXandVY(val1, val2) => {
-                vec![hex(*val1 as u16), hex(*val2 as u16)]
-            }
-            CrispsAteDecodedOpcodes::SetVXToVXxorVY(val1, val2) => {
-                vec![hex(*val1 as u16), hex(*val2 as u16)]
-            }
-            CrispsAteDecodedOpcodes::AddVYtoVX(val1, val2) => {
-                vec![hex(*val1 as u16), hex(*val2 as u16)]
-            }
-            CrispsAteDecodedOpcodes::SubtractVYFromVX(val1, val2) => {
-                vec![hex(*val1 as u16), hex(*val2 as u16)]
-            }
-            CrispsAteDecodedOpcodes::StoreLeastBitOfVXAndShiftVXRight(val1) => {
-                vec![hex(*val1 as u16)]
-            }
-            CrispsAteDecodedOpcodes::SetVXToVYMinusVX(val1, val2) => {
-                vec![hex(*val1 as u16), hex(*val2 as u16)]
-            }
-            CrispsAteDecodedOpcodes::StoreMostBitOfVXAndShiftVXLeft(val1) => {
-                vec![hex(*val1 as u16)]
-            }
-            CrispsAteDecodedOpcodes::SkipIfVXNotEqualVY(val1, val2) => {
-                vec![hex(*val1 as u16), hex(*val2 as u16)]
-            }
-            CrispsAteDecodedOpcodes::SetIAddress(val1) => vec![hex(*val1)],
-            CrispsAteDecodedOpcodes::JumpToAddress(val1) => vec![hex(*val1)],
-            CrispsAteDecodedOpcodes::SetVXToBitwiseANDWithSaltAndRandom(val1, val2) => {
-                vec![hex(*val1 as u16), hex(*val2 as u16)]
-            }
-            CrispsAteDecodedOpcodes::DrawSpriteAt(val1, val2, val3) => {
-                vec![hex(*val1 as u16), hex(*val2 as u16), hex(*val3 as u16)]
-            }
-            CrispsAteDecodedOpcodes::SkipIfKeyAtVXIsPressed(val1) => vec![hex(*val1 as u16)],
-            CrispsAteDecodedOpcodes::SkipIfKeyAtVXIsNotPressed(val1) => vec![hex(*val1 as u16)],
-            CrispsAteDecodedOpcodes::SetVXToDelayValue(val1) => vec![hex(*val1 as u16)],
-            CrispsAteDecodedOpcodes::GetKeyToVX(val1) => vec![hex(*val1 as u16)],
-            CrispsAteDecodedOpcodes::SetDelayToVX(val1) => vec![hex(*val1 as u16)],
-            CrispsAteDecodedOpcodes::SetSoundToVX(val1) => vec![hex(*val1 as u16)],
-            CrispsAteDecodedOpcodes::AddVXToI(val1) => vec![hex(*val1 as u16)],
-            CrispsAteDecodedOpcodes::SetIToLocationOfVXChar(val1) => vec![hex(*val1 as u16)],
-            CrispsAteDecodedOpcodes::StoreBinaryCodedDecimalVX(val1) => vec![hex(*val1 as u16)],
-            CrispsAteDecodedOpcodes::StoreFromV0ToVXStartingFromI(val1) => vec![hex(*val1 as u16)],
-            CrispsAteDecodedOpcodes::FillFromV0ToVXStartingFromI(val1) => vec![hex(*val1 as u16)],
-            CrispsAteDecodedOpcodes::None(val1) => vec![hex(*val1)],
-        };
-
         let values_dec: Vec<u16> = match self {
             CrispsAteDecodedOpcodes::Call(val1) => vec![*val1],
             CrispsAteDecodedOpcodes::ClearDisplay => vec![],
@@ -233,7 +160,7 @@ impl fmt::Debug for CrispsAteDecodedOpcodes {
             CrispsAteDecodedOpcodes::None(val1) => vec![(*val1)],
         };
 
-        write!(f, "{} -> hex {:?} | dec {:?}", name, values_hex, values_dec)
+        write!(f, "{} (with: {:?})", name, values_dec)
     }
 }
 
@@ -250,7 +177,7 @@ impl CrispAteTimers {
 }
 
 #[derive(Debug)]
-pub struct CrispAteRegisters {
+pub struct PastCrispAteRegisters {
     pub v_0: u16,
     pub v_1: u16,
     pub v_2: u16,
@@ -272,9 +199,34 @@ pub struct CrispAteRegisters {
     pub draw_flag: bool,
 }
 
-impl CrispAteRegisters {
-    pub fn new() -> Self {
-        CrispAteRegisters {
+#[derive(Debug)]
+pub struct CurrentCrispAteRegisters {
+    pub v_0: u16,
+    pub v_1: u16,
+    pub v_2: u16,
+    pub v_3: u16,
+    pub v_4: u16,
+    pub v_5: u16,
+    pub v_6: u16,
+    pub v_7: u16,
+    pub v_8: u16,
+    pub v_9: u16,
+    pub v_a: u16,
+    pub v_b: u16,
+    pub v_c: u16,
+    pub v_d: u16,
+    pub v_e: u16,
+    pub v_f: u16,
+    pub address: u16,
+    pub program_counter: u16,
+    pub draw_flag: bool,
+    pub history: Vec<String>,
+    pub debug_mode: bool
+}
+
+impl CurrentCrispAteRegisters {
+    pub fn new(debug_mode: bool) -> Self {
+        CurrentCrispAteRegisters {
             v_0: 0,
             v_1: 0,
             v_2: 0,
@@ -294,6 +246,8 @@ impl CrispAteRegisters {
             address: 0,
             program_counter: 0,
             draw_flag: false,
+            history: Vec::new(),
+            debug_mode
         }
     }
 }

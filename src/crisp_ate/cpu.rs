@@ -1,4 +1,4 @@
-use super::registers::{CrispAteRegisters, CrispAteTimers, CrispsAteDecodedOpcodes};
+use super::registers::{CurrentCrispAteRegisters, CrispAteTimers, CrispsAteDecodedOpcodes, PastCrispAteRegisters};
 use super::runtime::CrispAteRuntime;
 use crate::utils::hex;
 
@@ -170,16 +170,16 @@ fn decode_opcode(opcode: u16) -> CrispsAteDecodedOpcodes {
 #[derive(Debug)]
 pub struct CrispAte {
     memory: [u16; 4096],
-    pub registers: CrispAteRegisters,
-    screen: [bool; 64 * 32],
+    pub registers: CurrentCrispAteRegisters,
+    pub screen: [bool; 64 * 32],
     pub timers: CrispAteTimers,
     pub runtime: CrispAteRuntime,
 }
 
 impl CrispAte {
-    pub fn new() -> Self {
+    pub fn new(debug_mode: bool) -> Self {
         let memory: [u16; 4096] = [0; 4096];
-        let registers = CrispAteRegisters::new();
+        let registers = CurrentCrispAteRegisters::new(debug_mode);
         let screen: [bool; 64 * 32] = [false; 64 * 32];
         let timers = CrispAteTimers::new();
         let runtime = CrispAteRuntime::new();
@@ -237,7 +237,7 @@ impl CrispAte {
         println!("Program counter set.");
     }
 
-    fn fetch_and_decode(&self) -> CrispsAteDecodedOpcodes {
+    fn fetch_and_decode(&mut self) -> CrispsAteDecodedOpcodes {
         let program_counter: usize = self.registers.program_counter.into();
 
         println!(
@@ -252,7 +252,7 @@ impl CrispAte {
 
         let opcode = result & 0xFFFF;
 
-        println!("Got opcode: {}", hex(opcode));
+        self.registers.history.push(format!("Got raw opcode: {}", hex(opcode)));
 
         decode_opcode(opcode)
     }
@@ -281,6 +281,36 @@ impl CrispAte {
 
     fn execute(&mut self, opcode: CrispsAteDecodedOpcodes) {
         println!("Trying to execute opcode: {:#04x?}", opcode);
+        println!("Saving past...");
+        let past_registers = PastCrispAteRegisters {
+            v_0: self.registers.v_0,
+            v_1: self.registers.v_1,
+            v_2: self.registers.v_2,
+            v_3: self.registers.v_3,
+            v_4: self.registers.v_4,
+            v_5: self.registers.v_5,
+            v_6: self.registers.v_6,
+            v_7: self.registers.v_7,
+            v_8: self.registers.v_8,
+            v_9: self.registers.v_9,
+            v_a: self.registers.v_a,
+            v_b: self.registers.v_b,
+            v_c: self.registers.v_c,
+            v_d: self.registers.v_d,
+            v_e: self.registers.v_e,
+            v_f: self.registers.v_f,
+            address: self.registers.address,
+            draw_flag: self.registers.draw_flag,
+            program_counter: self.registers.program_counter,
+        };
+
+        let past_runtime = CrispAteRuntime {
+            stack: self.runtime.stack,
+            stack_pointer: self.runtime.stack_pointer,
+        };
+
+        println!("Done.");
+
         match opcode {
             CrispsAteDecodedOpcodes::None(opcode) => panic!("Unknown opcode: {:#04x?}", opcode),
             CrispsAteDecodedOpcodes::AddToVX(v_no, nibble) => {
@@ -351,8 +381,13 @@ impl CrispAte {
 
                     for col in 0..8 {
                         if pixel & (0x80 >> col) != 0 {
-                            let offset: usize =
+                            let mut offset: usize =
                                 ((x_coordinate + col) + (y_coordinate + row) * 64).into();
+
+                            if offset > 2048 {
+                                offset = offset - 2048;
+                            }
+
                             if self.screen[offset] == true {
                                 self.registers.v_f = 1;
                             }
@@ -389,8 +424,8 @@ impl CrispAte {
             }
             CrispsAteDecodedOpcodes::Return => {
                 // 00EE -> Returns from a subroutine.
-                self.registers.program_counter = self.runtime.stack[self.runtime.stack_pointer];
                 self.runtime.stack_pointer -= 1;
+                self.registers.program_counter = self.runtime.stack[self.runtime.stack_pointer];
             }
             CrispsAteDecodedOpcodes::SetDelayToVX(v_no) => {
                 // FX15 -> Sets the delay timer to VX.
@@ -402,10 +437,33 @@ impl CrispAte {
                 self.registers.address = nibble;
                 self.registers.program_counter += 2;
             }
-            CrispsAteDecodedOpcodes::SetIToLocationOfVXChar(v_no) => {
+            CrispsAteDecodedOpcodes::SetIToLocationOfVXChar(sprite) => {
                 // FX29 -> Sets I to the location of the sprite for the character in VX.
                 // Characters 0-F (in hexadecimal) are represented by a 4x5 font.
-                unimplemented!()
+                let offset = match sprite {
+                    0x0 => 0,
+                    0x1 => 1,
+                    0x2 => 2,
+                    0x3 => 3,
+                    0x4 => 4,
+                    0x5 => 5,
+                    0x6 => 6,
+                    0x7 => 7,
+                    0x8 => 8,
+                    0x9 => 9,
+                    0xA => 10,
+                    0xB => 11,
+                    0xC => 12,
+                    0xD => 13,
+                    0xE => 14,
+                    0xF => 15,
+                    _ => panic!("Sprite matched unknown value!")
+                };
+
+                let location = 0x200 + (5 * offset);
+
+                self.registers.address = location;
+                self.registers.program_counter += 2;
             }
             CrispsAteDecodedOpcodes::SetSoundToVX(v_no) => {
                 // FX18 -> Sets the sound timer to VX.
@@ -417,7 +475,7 @@ impl CrispAte {
                 // v_no -> X
                 // nibble -> NN
 
-                *self.find_v_register(v_no) += nibble;
+                *self.find_v_register(v_no) = nibble;
                 self.registers.program_counter += 2;
             }
             CrispsAteDecodedOpcodes::SetVXToBitwiseANDWithSaltAndRandom(v_no, nibble) => {
@@ -525,7 +583,14 @@ impl CrispAte {
             CrispsAteDecodedOpcodes::SkipIfVXNotEqualVY(v_x_no, v_y_no) => {
                 // 9XY0 -> Skips the next instruction if VX does not equal VY.
                 // (Usually the next instruction is a jump to skip a code block);
-                unimplemented!()
+                let vx = *self.find_v_register(v_x_no);
+                let vy = *self.find_v_register(v_y_no);
+
+                if vx != vy {
+                    self.registers.program_counter += 2;
+                }
+
+                self.registers.program_counter += 2;
             }
             CrispsAteDecodedOpcodes::StoreBinaryCodedDecimalVX(v_no) => {
                 // FX33 -> Stores the binary-coded decimal representation of VX,
@@ -555,14 +620,133 @@ impl CrispAte {
                 unimplemented!()
             }
         }
+
+        if self.registers.v_0 != past_registers.v_0 {
+            self.registers.history.push(
+                format!("V_0 -> old: {} | new: {}", past_registers.v_0, self.registers.v_0)
+            )
+        }
+
+        if self.registers.v_1 != past_registers.v_1 {
+            self.registers.history.push(
+                format!("V_1 -> old: {} | new: {}", past_registers.v_1, self.registers.v_1)
+            )
+        }
+
+        if self.registers.v_2 != past_registers.v_2 {
+            self.registers.history.push(
+                format!("v_2 -> old: {} | new: {}", past_registers.v_2, self.registers.v_2)
+            )
+        }
+
+        if self.registers.v_3 != past_registers.v_3 {
+            self.registers.history.push(
+                format!("v_3 -> old: {} | new: {}", past_registers.v_3, self.registers.v_3)
+            )
+        }
+
+        if self.registers.v_4 != past_registers.v_4 {
+            self.registers.history.push(
+                format!("v_4 -> old: {} | new: {}", past_registers.v_4, self.registers.v_4)
+            )
+        }
+
+        if self.registers.v_5 != past_registers.v_5 {
+            self.registers.history.push(
+                format!("v_5 -> old: {} | new: {}", past_registers.v_5, self.registers.v_5)
+            )
+        }
+
+        if self.registers.v_6 != past_registers.v_6 {
+            self.registers.history.push(
+                format!("v_6 -> old: {} | new: {}", past_registers.v_6, self.registers.v_6)
+            )
+        }
+
+        if self.registers.v_7 != past_registers.v_7 {
+            self.registers.history.push(
+                format!("v_7 -> old: {} | new: {}", past_registers.v_7, self.registers.v_7)
+            )
+        }
+
+        if self.registers.v_8 != past_registers.v_8 {
+            self.registers.history.push(
+                format!("v_8 -> old: {} | new: {}", past_registers.v_8, self.registers.v_8)
+            )
+        }
+
+        if self.registers.v_9 != past_registers.v_9 {
+            self.registers.history.push(
+                format!("v_9 -> old: {} | new: {}", past_registers.v_9, self.registers.v_9)
+            )
+        }
+
+        if self.registers.v_a != past_registers.v_a {
+            self.registers.history.push(
+                format!("v_a -> old: {} | new: {}", past_registers.v_a, self.registers.v_a)
+            )
+        }
+
+        if self.registers.v_b != past_registers.v_b {
+            self.registers.history.push(
+                format!("v_b -> old: {} | new: {}", past_registers.v_b, self.registers.v_b)
+            )
+        }
+
+        if self.registers.v_c != past_registers.v_c {
+            self.registers.history.push(
+                format!("v_c -> old: {} | new: {}", past_registers.v_c, self.registers.v_c)
+            )
+        }
+
+        if self.registers.v_d != past_registers.v_d {
+            self.registers.history.push(
+                format!("v_d -> old: {} | new: {}", past_registers.v_d, self.registers.v_d)
+            )
+        }
+
+        if self.registers.v_e != past_registers.v_e {
+            self.registers.history.push(
+                format!("v_e -> old: {} | new: {}", past_registers.v_e, self.registers.v_e)
+            )
+        }
+
+        if self.registers.v_f != past_registers.v_f {
+            self.registers.history.push(
+                format!("v_f -> old: {} | new: {}", past_registers.v_f, self.registers.v_f)
+            )
+        }
+
+        if self.registers.address != past_registers.address {
+            self.registers.history.push(
+                format!("address -> old: {} | new: {}", past_registers.address, self.registers.address)
+            )
+        }
+
+        if self.registers.program_counter != past_registers.program_counter {
+            self.registers.history.push(
+                format!("program counter -> old: {} | new: {}", past_registers.program_counter, self.registers.program_counter)
+            )
+        }
+
+        if self.runtime.stack != past_runtime.stack {
+            self.registers.history.push(
+                format!("runtime stack -> old: {:#?} | new: {:#?}", past_runtime.stack, self.runtime.stack)
+            )
+        }
+
+        if self.runtime.stack_pointer != past_runtime.stack_pointer {
+            self.registers.history.push(
+                format!("runtime stack pointer -> old: {} | new: {}", past_runtime.stack_pointer, self.runtime.stack_pointer)
+            )
+        }
+
     }
 
     pub fn emulation_cyle(&mut self) {
-        println!("--------------------");
-        println!();
         println!("Starting emulation cycle...");
         let opcode = self.fetch_and_decode();
-        println!("Detected opcode: {:#?}", opcode);
+        self.registers.history.push(format!("Detected opcode: {:#?}", opcode));
         self.execute(opcode);
 
         if self.timers.delay > 0 {
@@ -575,18 +759,6 @@ impl CrispAte {
             }
             self.timers.sound -= 1;
         }
-
-        println!("Registers state after running opcode:");
-        println!("{:#?}", self.runtime);
-        println!();
-
-        println!("Runtime state after running opcode:");
-        println!("{:#?}", self.runtime);
-        println!();
-
-        println!("Timers state after running opcode:");
-        println!("{:#?}", self.timers);
-        println!();
 
         println!("Cicle finished.");
         println!();
@@ -994,43 +1166,10 @@ mod opcode_tests {
 mod execution_tests {
     use super::*;
 
-    /*
-        // Call(u16) -> 0NNN (NNN)
-    Return,                                       // 00EE
-    CallSubRoutine(u16),                          // 2NNN (NNN)
-    SkipIfVXEquals(u16, u16),                     // 3XNN (X, NN)
-    SkipIfVXNotEqual(u16, u16),                   // 4XNN (X, NN)
-    SkipIfVXEqualsVY(u16, u16),                   // 5XY0 (X, Y)
-    SetVXToVY(u16, u16),                          // 8XY0 (X, Y)
-    SetVXToVXorVY(u16, u16),                      // 8XY1 (X, Y)
-    SetVXToVXandVY(u16, u16),                     // 8XY2 (X, Y)
-    SetVXToVXxorVY(u16, u16),                     // 8XY3 (X, Y)
-    AddVYtoVX(u16, u16),                          // 8XY4 (X, Y)
-    SubtractVYFromVX(u16, u16),                   // 8XY5 (X, Y)
-    StoreLeastBitOfVXAndShiftVXRight(u16),        // 8XY6 (X)
-    SetVXToVYMinusVX(u16, u16),                   // 8XY7 (X, Y)
-    StoreMostBitOfVXAndShiftVXLeft(u16),          // 8XYE (X)
-    SkipIfVXNotEqualVY(u16, u16),                 // 9XY0 (X, y)
-    JumpToAddress(u16),                           // BNNN (NNN)
-    SetVXToBitwiseANDWithSaltAndRandom(u16, u16), // CXNN (X, NN)
-    SkipIfKeyAtVXIsPressed(u16),                  // EX9E (X)
-    SkipIfKeyAtVXIsNotPressed(u16),               // EXA1 (X)
-    SetVXToDelayValue(u16),                       // FX07 (X)
-    GetKeyToVX(u16),                              // FX0A (X)
-    SetDelayToVX(u16),                            // FX15 (X)
-    SetSoundToVX(u16),                            // FX18 (X)
-    AddVXToI(u16),                                // FX1E (X)
-    SetIToLocationOfVXChar(u16),                  // FX29 (X)
-    StoreBinaryCodedDecimalVX(u16),               // FX33 (X)
-    StoreFromV0ToVXStartingFromI(u16),            // FX55 (X)
-    FillFromV0ToVXStartingFromI(u16),             // FX65 (X)
-    None(u16),                                    // Unknown
-    */
-
     #[test]
     fn can_properly_execute_clearscreen_opcode() {
         // ClearDisplay -> 00E0
-        let mut sut = CrispAte::new();
+        let mut sut = CrispAte::new(false);
         sut.screen = [true; 64 * 32];
         sut.execute(decode_opcode(0x00E0));
 
@@ -1040,7 +1179,7 @@ mod execution_tests {
     #[test]
     fn can_properly_execute_jump_opcode() {
         // Jump(u16) -> 1NNN (NNN)
-        let mut sut = CrispAte::new();
+        let mut sut = CrispAte::new(false);
         sut.registers.program_counter = 1;
         sut.execute(decode_opcode(0x1200));
 
@@ -1050,7 +1189,7 @@ mod execution_tests {
     #[test]
     fn can_properly_execute_setvx_opcode() {
         // SetVX(u16, u16) -> 6XNN (X, NN)
-        let mut sut = CrispAte::new();
+        let mut sut = CrispAte::new(false);
 
         sut.execute(decode_opcode(0x6001));
         assert_eq!(sut.registers.v_0, 0x01);
@@ -1104,7 +1243,7 @@ mod execution_tests {
     #[test]
     fn can_properly_execute_addtovx_opcode() {
         // AddToVX(u16, u16) -> 7XNN (X, NN)
-        let mut sut = CrispAte::new();
+        let mut sut = CrispAte::new(false);
 
         sut.registers.v_0 = 0x1;
         sut.registers.v_1 = 0x1;
@@ -1191,7 +1330,7 @@ mod execution_tests {
     #[test]
     fn can_properly_execute_setiaddress_opcode() {
         // SetIAddress(u16) -> ANNN (NNN)
-        let mut sut = CrispAte::new();
+        let mut sut = CrispAte::new(false);
         sut.execute(decode_opcode(0xA123));
 
         assert_eq!(sut.registers.address, 0x123);
@@ -1201,7 +1340,7 @@ mod execution_tests {
     #[test]
     fn can_properly_execute_drawspriteat_opcode() {
         // DrawSpriteAt(u16, u16, u16) -> DXYN (X, Y, N)
-        let mut sut = CrispAte::new();
+        let mut sut = CrispAte::new(false);
         sut.execute(decode_opcode(0xD123));
 
         assert_eq!(false, true);
